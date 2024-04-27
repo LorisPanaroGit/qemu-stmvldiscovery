@@ -1560,7 +1560,7 @@ static void machine_help_func(const QDict *qdict)
             return;
         }
     }
-
+    printf("Hello from QEMU\n");
     printf("Supported machines are:\n");
     machines = g_slist_sort(machines, machine_class_cmp);
     for (el = machines; el; el = el->next) {
