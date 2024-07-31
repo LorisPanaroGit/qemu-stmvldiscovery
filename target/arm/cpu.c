@@ -1132,6 +1132,35 @@ static bool arm_cpu_virtio_is_big_endian(CPUState *cs)
     return arm_cpu_data_is_big_endian(env);
 }
 
+#ifdef CONFIG_TCG
+bool arm_cpu_exec_halt(CPUState *cs)
+{
+    bool leave_halt = cpu_has_work(cs);
+
+    if (leave_halt) {
+        /* We're about to come out of WFI/WFE: disable the WFxT timer */
+        ARMCPU *cpu = ARM_CPU(cs);
+        if (cpu->wfxt_timer) {
+            timer_del(cpu->wfxt_timer);
+        }
+    }
+    return leave_halt;
+}
+#endif
+
+static void arm_wfxt_timer_cb(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+    CPUState *cs = CPU(cpu);
+
+    /*
+     * We expect the CPU to be halted; this will cause arm_cpu_is_work()
+     * to return true (so we will come out of halt even with no other
+     * pending interrupt), and the TCG accelerator's cpu_exec_interrupt()
+     * function auto-clears the CPU_INTERRUPT_EXITTB flag for us.
+     */
+    cpu_interrupt(cs, CPU_INTERRUPT_EXITTB);
+}
 #endif
 
 static void arm_disas_set_info(CPUState *cpu, disassemble_info *info)
@@ -1877,6 +1906,9 @@ static void arm_cpu_finalizefn(Object *obj)
     if (cpu->pmu_timer) {
         timer_free(cpu->pmu_timer);
     }
+    if (cpu->wfxt_timer) {
+        timer_free(cpu->wfxt_timer);
+    }
 #endif
 }
 
@@ -1941,7 +1973,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
 #if defined(CONFIG_TCG) && !defined(CONFIG_USER_ONLY)
     /* Use pc-relative instructions in system-mode */
-    cs->tcg_cflags |= CF_PCREL;
+    tcg_cflags_set(cs, CF_PCREL);
 #endif
 
     /* If we needed to query the host kernel for the CPU features
@@ -2369,6 +2401,13 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 #endif
     }
 
+#ifndef CONFIG_USER_ONLY
+    if (tcg_enabled() && cpu_isar_feature(aa64_wfxt, cpu)) {
+        cpu->wfxt_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+                                       arm_wfxt_timer_cb, cpu);
+    }
+#endif
+
     if (tcg_enabled()) {
         /*
          * Don't report some architectural features in the ID registers
@@ -2479,6 +2518,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
     register_cp_regs_for_features(cpu);
     arm_cpu_register_gdb_regs_for_features(cpu);
+    arm_cpu_register_gdb_commands(cpu);
 
     init_cpreg_list(cpu);
 
@@ -2625,6 +2665,7 @@ static const TCGCPUOps arm_tcg_ops = {
 #else
     .tlb_fill = arm_cpu_tlb_fill,
     .cpu_exec_interrupt = arm_cpu_exec_interrupt,
+    .cpu_exec_halt = arm_cpu_exec_halt,
     .do_interrupt = arm_cpu_do_interrupt,
     .do_transaction_failed = arm_cpu_do_transaction_failed,
     .do_unaligned_access = arm_cpu_do_unaligned_access,

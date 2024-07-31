@@ -27,7 +27,7 @@
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "hw/s390x/adapter.h"
-#include "exec/gdbstub.h"
+#include "gdbstub/enums.h"
 #include "sysemu/kvm_int.h"
 #include "sysemu/runstate.h"
 #include "sysemu/cpus.h"
@@ -340,14 +340,83 @@ err:
     return ret;
 }
 
+void kvm_park_vcpu(CPUState *cpu)
+{
+    struct KVMParkedVcpu *vcpu;
+
+    trace_kvm_park_vcpu(cpu->cpu_index, kvm_arch_vcpu_id(cpu));
+
+    vcpu = g_malloc0(sizeof(*vcpu));
+    vcpu->vcpu_id = kvm_arch_vcpu_id(cpu);
+    vcpu->kvm_fd = cpu->kvm_fd;
+    QLIST_INSERT_HEAD(&kvm_state->kvm_parked_vcpus, vcpu, node);
+}
+
+int kvm_unpark_vcpu(KVMState *s, unsigned long vcpu_id)
+{
+    struct KVMParkedVcpu *cpu;
+    int kvm_fd = -ENOENT;
+
+    QLIST_FOREACH(cpu, &s->kvm_parked_vcpus, node) {
+        if (cpu->vcpu_id == vcpu_id) {
+            QLIST_REMOVE(cpu, node);
+            kvm_fd = cpu->kvm_fd;
+            g_free(cpu);
+        }
+    }
+
+    trace_kvm_unpark_vcpu(vcpu_id, kvm_fd > 0 ? "unparked" : "!found parked");
+
+    return kvm_fd;
+}
+
+int kvm_create_vcpu(CPUState *cpu)
+{
+    unsigned long vcpu_id = kvm_arch_vcpu_id(cpu);
+    KVMState *s = kvm_state;
+    int kvm_fd;
+
+    /* check if the KVM vCPU already exist but is parked */
+    kvm_fd = kvm_unpark_vcpu(s, vcpu_id);
+    if (kvm_fd < 0) {
+        /* vCPU not parked: create a new KVM vCPU */
+        kvm_fd = kvm_vm_ioctl(s, KVM_CREATE_VCPU, vcpu_id);
+        if (kvm_fd < 0) {
+            error_report("KVM_CREATE_VCPU IOCTL failed for vCPU %lu", vcpu_id);
+            return kvm_fd;
+        }
+    }
+
+    cpu->kvm_fd = kvm_fd;
+    cpu->kvm_state = s;
+    cpu->vcpu_dirty = true;
+    cpu->dirty_pages = 0;
+    cpu->throttle_us_per_full = 0;
+
+    trace_kvm_create_vcpu(cpu->cpu_index, vcpu_id, kvm_fd);
+
+    return 0;
+}
+
+int kvm_create_and_park_vcpu(CPUState *cpu)
+{
+    int ret = 0;
+
+    ret = kvm_create_vcpu(cpu);
+    if (!ret) {
+        kvm_park_vcpu(cpu);
+    }
+
+    return ret;
+}
+
 static int do_kvm_destroy_vcpu(CPUState *cpu)
 {
     KVMState *s = kvm_state;
     long mmap_size;
-    struct KVMParkedVcpu *vcpu = NULL;
     int ret = 0;
 
-    trace_kvm_destroy_vcpu();
+    trace_kvm_destroy_vcpu(cpu->cpu_index, kvm_arch_vcpu_id(cpu));
 
     ret = kvm_arch_destroy_vcpu(cpu);
     if (ret < 0) {
@@ -373,10 +442,7 @@ static int do_kvm_destroy_vcpu(CPUState *cpu)
         }
     }
 
-    vcpu = g_malloc0(sizeof(*vcpu));
-    vcpu->vcpu_id = kvm_arch_vcpu_id(cpu);
-    vcpu->kvm_fd = cpu->kvm_fd;
-    QLIST_INSERT_HEAD(&kvm_state->kvm_parked_vcpus, vcpu, node);
+    kvm_park_vcpu(cpu);
 err:
     return ret;
 }
@@ -389,24 +455,6 @@ void kvm_destroy_vcpu(CPUState *cpu)
     }
 }
 
-static int kvm_get_vcpu(KVMState *s, unsigned long vcpu_id)
-{
-    struct KVMParkedVcpu *cpu;
-
-    QLIST_FOREACH(cpu, &s->kvm_parked_vcpus, node) {
-        if (cpu->vcpu_id == vcpu_id) {
-            int kvm_fd;
-
-            QLIST_REMOVE(cpu, node);
-            kvm_fd = cpu->kvm_fd;
-            g_free(cpu);
-            return kvm_fd;
-        }
-    }
-
-    return kvm_vm_ioctl(s, KVM_CREATE_VCPU, (void *)vcpu_id);
-}
-
 int kvm_init_vcpu(CPUState *cpu, Error **errp)
 {
     KVMState *s = kvm_state;
@@ -415,18 +463,13 @@ int kvm_init_vcpu(CPUState *cpu, Error **errp)
 
     trace_kvm_init_vcpu(cpu->cpu_index, kvm_arch_vcpu_id(cpu));
 
-    ret = kvm_get_vcpu(s, kvm_arch_vcpu_id(cpu));
+    ret = kvm_create_vcpu(cpu);
     if (ret < 0) {
-        error_setg_errno(errp, -ret, "kvm_init_vcpu: kvm_get_vcpu failed (%lu)",
+        error_setg_errno(errp, -ret,
+                         "kvm_init_vcpu: kvm_create_vcpu failed (%lu)",
                          kvm_arch_vcpu_id(cpu));
         goto err;
     }
-
-    cpu->kvm_fd = ret;
-    cpu->kvm_state = s;
-    cpu->vcpu_dirty = true;
-    cpu->dirty_pages = 0;
-    cpu->throttle_us_per_full = 0;
 
     mmap_size = kvm_ioctl(s, KVM_GET_VCPU_MMAP_SIZE, 0);
     if (mmap_size < 0) {
@@ -1909,8 +1952,8 @@ void kvm_irqchip_commit_routes(KVMState *s)
     assert(ret == 0);
 }
 
-static void kvm_add_routing_entry(KVMState *s,
-                                  struct kvm_irq_routing_entry *entry)
+void kvm_add_routing_entry(KVMState *s,
+                           struct kvm_irq_routing_entry *entry)
 {
     struct kvm_irq_routing_entry *new;
     int n, size;
@@ -2007,7 +2050,7 @@ void kvm_irqchip_change_notify(void)
     notifier_list_notify(&kvm_irqchip_change_notifiers, NULL);
 }
 
-static int kvm_irqchip_get_virq(KVMState *s)
+int kvm_irqchip_get_virq(KVMState *s)
 {
     int next_virq;
 
@@ -2163,62 +2206,6 @@ static int kvm_irqchip_assign_irqfd(KVMState *s, EventNotifier *event,
     }
 
     return kvm_vm_ioctl(s, KVM_IRQFD, &irqfd);
-}
-
-int kvm_irqchip_add_adapter_route(KVMState *s, AdapterInfo *adapter)
-{
-    struct kvm_irq_routing_entry kroute = {};
-    int virq;
-
-    if (!kvm_gsi_routing_enabled()) {
-        return -ENOSYS;
-    }
-
-    virq = kvm_irqchip_get_virq(s);
-    if (virq < 0) {
-        return virq;
-    }
-
-    kroute.gsi = virq;
-    kroute.type = KVM_IRQ_ROUTING_S390_ADAPTER;
-    kroute.flags = 0;
-    kroute.u.adapter.summary_addr = adapter->summary_addr;
-    kroute.u.adapter.ind_addr = adapter->ind_addr;
-    kroute.u.adapter.summary_offset = adapter->summary_offset;
-    kroute.u.adapter.ind_offset = adapter->ind_offset;
-    kroute.u.adapter.adapter_id = adapter->adapter_id;
-
-    kvm_add_routing_entry(s, &kroute);
-
-    return virq;
-}
-
-int kvm_irqchip_add_hv_sint_route(KVMState *s, uint32_t vcpu, uint32_t sint)
-{
-    struct kvm_irq_routing_entry kroute = {};
-    int virq;
-
-    if (!kvm_gsi_routing_enabled()) {
-        return -ENOSYS;
-    }
-    if (!kvm_check_extension(s, KVM_CAP_HYPERV_SYNIC)) {
-        return -ENOSYS;
-    }
-    virq = kvm_irqchip_get_virq(s);
-    if (virq < 0) {
-        return virq;
-    }
-
-    kroute.gsi = virq;
-    kroute.type = KVM_IRQ_ROUTING_HV_SINT;
-    kroute.flags = 0;
-    kroute.u.hv_sint.vcpu = vcpu;
-    kroute.u.hv_sint.sint = sint;
-
-    kvm_add_routing_entry(s, &kroute);
-    kvm_irqchip_commit_routes(s);
-
-    return virq;
 }
 
 #else /* !KVM_CAP_IRQ_ROUTING */
@@ -2385,7 +2372,7 @@ bool kvm_vcpu_id_is_valid(int vcpu_id)
 
 bool kvm_dirty_ring_enabled(void)
 {
-    return kvm_state->kvm_dirty_ring_size ? true : false;
+    return kvm_state && kvm_state->kvm_dirty_ring_size;
 }
 
 static void query_stats_cb(StatsResultList **result, StatsTarget target,
@@ -2949,7 +2936,7 @@ int kvm_convert_memory(hwaddr start, hwaddr size, bool to_private)
             !memory_region_is_ram_device(mr) &&
             !memory_region_is_rom(mr) &&
             !memory_region_is_romd(mr)) {
-		    ret = 0;
+            ret = 0;
         } else {
             error_report("Convert non guest_memfd backed memory region "
                         "(0x%"HWADDR_PRIx" ,+ 0x%"HWADDR_PRIx") to %s",
@@ -3020,7 +3007,7 @@ int kvm_cpu_exec(CPUState *cpu)
 
         kvm_arch_pre_run(cpu, run);
         if (qatomic_read(&cpu->exit_request)) {
-	    trace_kvm_interrupt_exit_request();
+            trace_kvm_interrupt_exit_request();
             /*
              * KVM requires us to reenter the kernel after IO exits to complete
              * instruction emulation. This self-signal will ensure that we
@@ -3801,6 +3788,21 @@ static void kvm_set_device(Object *obj,
     s->device = g_strdup(value);
 }
 
+static void kvm_set_kvm_rapl(Object *obj, bool value, Error **errp)
+{
+    KVMState *s = KVM_STATE(obj);
+    s->msr_energy.enable = value;
+}
+
+static void kvm_set_kvm_rapl_socket_path(Object *obj,
+                                         const char *str,
+                                         Error **errp)
+{
+    KVMState *s = KVM_STATE(obj);
+    g_free(s->msr_energy.socket_path);
+    s->msr_energy.socket_path = g_strdup(str);
+}
+
 static void kvm_accel_instance_init(Object *obj)
 {
     KVMState *s = KVM_STATE(obj);
@@ -3820,6 +3822,7 @@ static void kvm_accel_instance_init(Object *obj)
     s->xen_gnttab_max_frames = 64;
     s->xen_evtchn_max_pirq = 256;
     s->device = NULL;
+    s->msr_energy.enable = false;
 }
 
 /**
@@ -3863,6 +3866,17 @@ static void kvm_accel_class_init(ObjectClass *oc, void *data)
     object_class_property_add_str(oc, "device", kvm_get_device, kvm_set_device);
     object_class_property_set_description(oc, "device",
         "Path to the device node to use (default: /dev/kvm)");
+
+    object_class_property_add_bool(oc, "rapl",
+                                   NULL,
+                                   kvm_set_kvm_rapl);
+    object_class_property_set_description(oc, "rapl",
+        "Allow energy related MSRs for RAPL interface in Guest");
+
+    object_class_property_add_str(oc, "rapl-helper-socket", NULL,
+                                  kvm_set_kvm_rapl_socket_path);
+    object_class_property_set_description(oc, "rapl-helper-socket",
+        "Socket Path for comminucating with the Virtual MSR helper daemon");
 
     kvm_arch_accel_class_init(oc);
 }
@@ -3934,7 +3948,7 @@ static StatsList *add_kvmstat_entry(struct kvm_stats_desc *pdesc,
     /* Alloc and populate data list */
     stats = g_new0(Stats, 1);
     stats->name = g_strdup(pdesc->name);
-    stats->value = g_new0(StatsValue, 1);;
+    stats->value = g_new0(StatsValue, 1);
 
     if ((pdesc->flags & KVM_STATS_UNIT_MASK) == KVM_STATS_UNIT_BOOLEAN) {
         stats->value->u.boolean = *stats_data;

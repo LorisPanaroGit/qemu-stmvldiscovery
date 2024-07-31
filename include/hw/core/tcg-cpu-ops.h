@@ -115,8 +115,22 @@ struct TCGCPUOps {
     void (*do_interrupt)(CPUState *cpu);
     /** @cpu_exec_interrupt: Callback for processing interrupts in cpu_exec */
     bool (*cpu_exec_interrupt)(CPUState *cpu, int interrupt_request);
-    /** @cpu_exec_halt: Callback for handling halt in cpu_exec */
-    void (*cpu_exec_halt)(CPUState *cpu);
+    /**
+     * @cpu_exec_halt: Callback for handling halt in cpu_exec.
+     *
+     * The target CPU should do any special processing here that it needs
+     * to do when the CPU is in the halted state.
+     *
+     * Return true to indicate that the CPU should now leave halt, false
+     * if it should remain in the halted state. (This should generally
+     * be the same value that cpu_has_work() would return.)
+     *
+     * This method must be provided. If the target does not need to
+     * do anything special for halt, the same function used for its
+     * CPUClass::has_work method can be used here, as they have the
+     * same function signature.
+     */
+    bool (*cpu_exec_halt)(CPUState *cpu);
     /**
      * @tlb_fill: Handle a softmmu tlb miss
      *

@@ -25,6 +25,7 @@
 #include "qemu/plugin.h"
 #include "tcg/startup.h"
 #include "target_mman.h"
+#include "exec/page-protection.h"
 #include <elf.h>
 #include <endian.h>
 #include <grp.h>
@@ -6280,15 +6281,6 @@ abi_long do_arch_prctl(CPUX86State *env, int code, abi_ulong addr)
 # define PR_GET_TAGGED_ADDR_CTRL 56
 # define PR_TAGGED_ADDR_ENABLE  (1UL << 0)
 #endif
-#ifndef PR_MTE_TCF_SHIFT
-# define PR_MTE_TCF_SHIFT       1
-# define PR_MTE_TCF_NONE        (0UL << PR_MTE_TCF_SHIFT)
-# define PR_MTE_TCF_SYNC        (1UL << PR_MTE_TCF_SHIFT)
-# define PR_MTE_TCF_ASYNC       (2UL << PR_MTE_TCF_SHIFT)
-# define PR_MTE_TCF_MASK        (3UL << PR_MTE_TCF_SHIFT)
-# define PR_MTE_TAG_SHIFT       3
-# define PR_MTE_TAG_MASK        (0xffffUL << PR_MTE_TAG_SHIFT)
-#endif
 #ifndef PR_SET_IO_FLUSHER
 # define PR_SET_IO_FLUSHER 57
 # define PR_GET_IO_FLUSHER 58
@@ -6462,7 +6454,7 @@ static abi_long do_prctl(CPUArchState *env, abi_long option, abi_long arg2,
 
     case PR_GET_TID_ADDRESS:
         {
-            TaskState *ts = env_cpu(env)->opaque;
+            TaskState *ts = get_task_state(env_cpu(env));
             return put_user_ual(ts->child_tidptr, arg2);
         }
 
@@ -6582,8 +6574,8 @@ static int do_fork(CPUArchState *env, unsigned int flags, abi_ulong newsp,
          * generate code for parallel execution and flush old translations.
          * Do this now so that the copy gets CF_PARALLEL too.
          */
-        if (!(cpu->tcg_cflags & CF_PARALLEL)) {
-            cpu->tcg_cflags |= CF_PARALLEL;
+        if (!tcg_cflags_has(cpu, CF_PARALLEL)) {
+            tcg_cflags_set(cpu, CF_PARALLEL);
             tb_flush(cpu);
         }
 
@@ -7208,11 +7200,17 @@ static inline int tswapid(int id)
 #else
 #define __NR_sys_setresgid __NR_setresgid
 #endif
+#ifdef __NR_setgroups32
+#define __NR_sys_setgroups __NR_setgroups32
+#else
+#define __NR_sys_setgroups __NR_setgroups
+#endif
 
 _syscall1(int, sys_setuid, uid_t, uid)
 _syscall1(int, sys_setgid, gid_t, gid)
 _syscall3(int, sys_setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 _syscall3(int, sys_setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
+_syscall2(int, sys_setgroups, int, size, gid_t *, grouplist)
 
 void syscall_init(void)
 {
@@ -8123,7 +8121,7 @@ static int open_self_maps_2(void *opaque, target_ulong guest_start,
 static int open_self_maps_1(CPUArchState *env, int fd, bool smaps)
 {
     struct open_self_maps_data d = {
-        .ts = env_cpu(env)->opaque,
+        .ts = get_task_state(env_cpu(env)),
         .host_maps = read_self_maps(),
         .fd = fd,
         .smaps = smaps
@@ -8170,6 +8168,16 @@ static int open_self_stat(CPUArchState *cpu_env, int fd)
         } else if (i == 3) {
             /* ppid */
             g_string_printf(buf, FMT_pid " ", getppid());
+        } else if (i == 19) {
+            /* num_threads */
+            int cpus = 0;
+            WITH_RCU_READ_LOCK_GUARD() {
+                CPUState *cpu_iter;
+                CPU_FOREACH(cpu_iter) {
+                    cpus++;
+                }
+            }
+            g_string_printf(buf, "%d ", cpus);
         } else if (i == 21) {
             /* starttime */
             g_string_printf(buf, "%" PRIu64 " ", ts->start_boottime);
@@ -11890,7 +11898,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
                 unlock_user(target_grouplist, arg2,
                             gidsetsize * sizeof(target_id));
             }
-            return get_errno(setgroups(gidsetsize, grouplist));
+            return get_errno(sys_setgroups(gidsetsize, grouplist));
         }
     case TARGET_NR_fchown:
         return get_errno(fchown(arg1, low2highuid(arg2), low2highgid(arg3)));
@@ -12226,7 +12234,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
                 }
                 unlock_user(target_grouplist, arg2, 0);
             }
-            return get_errno(setgroups(gidsetsize, grouplist));
+            return get_errno(sys_setgroups(gidsetsize, grouplist));
         }
 #endif
 #ifdef TARGET_NR_fchown32

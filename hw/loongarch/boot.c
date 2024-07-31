@@ -15,6 +15,9 @@
 #include "sysemu/reset.h"
 #include "sysemu/qtest.h"
 
+struct memmap_entry *memmap_table;
+unsigned memmap_entries;
+
 ram_addr_t initrd_offset;
 uint64_t initrd_size;
 
@@ -160,7 +163,7 @@ static void init_cmdline(struct loongarch_boot_info *info, void *p, void *start)
     info->a0 = 1;
     info->a1 = cmdline_addr;
 
-    memcpy(p, info->kernel_cmdline, COMMAND_LINE_SIZE);
+    g_strlcpy(p, info->kernel_cmdline, COMMAND_LINE_SIZE);
 }
 
 static uint64_t cpu_loongarch_virt_to_phys(void *opaque, uint64_t addr)
@@ -256,10 +259,10 @@ static void fw_cfg_add_kernel_info(struct loongarch_boot_info *info,
     }
 }
 
-static void loongarch_firmware_boot(LoongArchMachineState *lams,
+static void loongarch_firmware_boot(LoongArchVirtMachineState *lvms,
                                     struct loongarch_boot_info *info)
 {
-    fw_cfg_add_kernel_info(info, lams->fw_cfg);
+    fw_cfg_add_kernel_info(info, lvms->fw_cfg);
 }
 
 static void init_boot_rom(struct loongarch_boot_info *info, void *p)
@@ -316,7 +319,7 @@ static void loongarch_direct_kernel_boot(struct loongarch_boot_info *info)
 
 void loongarch_load_kernel(MachineState *ms, struct loongarch_boot_info *info)
 {
-    LoongArchMachineState *lams = LOONGARCH_MACHINE(ms);
+    LoongArchVirtMachineState *lvms = LOONGARCH_VIRT_MACHINE(ms);
     int i;
 
     /* register reset function */
@@ -328,8 +331,8 @@ void loongarch_load_kernel(MachineState *ms, struct loongarch_boot_info *info)
     info->kernel_cmdline = ms->kernel_cmdline;
     info->initrd_filename = ms->initrd_filename;
 
-    if (lams->bios_loaded) {
-        loongarch_firmware_boot(lams, info);
+    if (lvms->bios_loaded) {
+        loongarch_firmware_boot(lvms, info);
     } else {
         loongarch_direct_kernel_boot(info);
     }

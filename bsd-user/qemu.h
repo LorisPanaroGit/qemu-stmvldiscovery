@@ -17,16 +17,19 @@
 #ifndef QEMU_H
 #define QEMU_H
 
+#include <sys/param.h>
+
+#include "qemu/int128.h"
 #include "cpu.h"
 #include "qemu/units.h"
 #include "exec/cpu_ldst.h"
 #include "exec/exec-all.h"
 
-#include "exec/user/abitypes.h"
+#include "user/abitypes.h"
 
 extern char **environ;
 
-#include "exec/user/thunk.h"
+#include "user/thunk.h"
 #include "target_arch.h"
 #include "syscall_defs.h"
 #include "target_syscall.h"
@@ -34,7 +37,9 @@ extern char **environ;
 #include "target_os_signal.h"
 #include "target.h"
 #include "exec/gdbstub.h"
+#include "exec/page-protection.h"
 #include "qemu/clang-tsa.h"
+#include "accel/tcg/vcpu-state.h"
 
 #include "qemu-os.h"
 /*
@@ -75,7 +80,7 @@ struct emulated_sigtable {
 /*
  * NOTE: we force a big alignment so that the stack stored after is aligned too
  */
-typedef struct TaskState {
+struct TaskState {
     pid_t ts_tid;     /* tid (or pid) of this task */
 
     struct TaskState *next;
@@ -113,12 +118,7 @@ typedef struct TaskState {
 
     /* This thread's sigaltstack, if it has one */
     struct target_sigaltstack sigaltstack_used;
-} __attribute__((aligned(16))) TaskState;
-
-static inline TaskState *get_task_state(CPUState *cs)
-{
-    return cs->opaque;
-}
+} __attribute__((aligned(16)));
 
 void stop_all_tasks(void);
 extern const char *interp_prefix;

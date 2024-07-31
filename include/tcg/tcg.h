@@ -155,6 +155,7 @@ typedef uint64_t TCGRegSet;
 #define TCG_TARGET_HAS_minmax_vec       0
 #define TCG_TARGET_HAS_bitsel_vec       0
 #define TCG_TARGET_HAS_cmpsel_vec       0
+#define TCG_TARGET_HAS_tst_vec          0
 #else
 #define TCG_TARGET_MAYBE_vec            1
 #endif
@@ -537,6 +538,7 @@ struct TCGContext {
      * space for instructions (for variable-instruction-length ISAs).
      */
     struct qemu_plugin_tb *plugin_tb;
+    const struct DisasContextBase *plugin_db;
 
     /* descriptor of the instruction being translated */
     struct qemu_plugin_insn *plugin_insn;
