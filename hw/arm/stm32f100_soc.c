@@ -36,9 +36,9 @@
 
 /* stm32f100_soc implementation is derived from stm32f205_soc */
 
-static const uint32_t usart_addr[STM_NUM_USARTS] = { 0x40013800, 0x40004400,
-    0x40004800 };
+static const uint32_t usart_addr[STM_NUM_USARTS] = { 0x40013800, 0x40004400, 0x40004800 };
 static const uint32_t spi_addr[STM_NUM_SPIS] = { 0x40013000, 0x40003800 };
+static const uint32_t rcc_addr = 0x40021000;
 
 static const int usart_irq[STM_NUM_USARTS] = {37, 38, 39};
 static const int spi_irq[STM_NUM_SPIS] = {35, 36};
@@ -49,10 +49,10 @@ static void stm32f100_soc_initfn(Object *obj)
     int i;
 
     object_initialize_child(obj, "armv7m", &s->armv7m, TYPE_ARMV7M);
+    object_initialize_child(obj, "rcc", &s->rcc, TYPE_STM32F2XX_RCC);
 
     for (i = 0; i < STM_NUM_USARTS; i++) {
-        object_initialize_child(obj, "usart[*]", &s->usart[i],
-                                TYPE_STM32F2XX_USART);
+        object_initialize_child(obj, "usart[*]", &s->usart[i], TYPE_STM32F2XX_USART);
     }
 
     for (i = 0; i < STM_NUM_SPIS; i++) {
@@ -149,6 +149,11 @@ static void stm32f100_soc_realize(DeviceState *dev_soc, Error **errp)
         sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, spi_irq[i]));
     }
 
+    dev = DEVICE(&(s->rcc));
+    busdev = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(busdev, errp);
+    sysbus_mmio_map(busdev, 0, rcc_addr);
+
     create_unimplemented_device("timer[2]",  0x40000000, 0x400);
     create_unimplemented_device("timer[3]",  0x40000400, 0x400);
     create_unimplemented_device("timer[4]",  0x40000800, 0x400);
@@ -176,7 +181,7 @@ static void stm32f100_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("timer[16]", 0x40014400, 0x400);
     create_unimplemented_device("timer[17]", 0x40014800, 0x400);
     create_unimplemented_device("DMA",       0x40020000, 0x400);
-    create_unimplemented_device("RCC",       0x40021000, 0x400);
+    //create_unimplemented_device("RCC",       0x40021000, 0x400);
     create_unimplemented_device("Flash Int", 0x40022000, 0x400);
     create_unimplemented_device("CRC",       0x40023000, 0x400);
 }

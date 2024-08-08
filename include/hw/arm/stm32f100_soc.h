@@ -27,6 +27,7 @@
 
 #include "hw/char/stm32f2xx_usart.h"
 #include "hw/ssi/stm32f2xx_spi.h"
+#include "hw/misc/stm32f2xx_rcc.h"
 #include "hw/arm/armv7m.h"
 #include "qom/object.h"
 #include "hw/clock.h"
@@ -49,6 +50,7 @@ struct STM32F100State {
 
     STM32F2XXUsartState usart[STM_NUM_USARTS];
     STM32F2XXSPIState spi[STM_NUM_SPIS];
+    STM32F2XXRccState rcc;
 
     MemoryRegion sram;
     MemoryRegion flash;
