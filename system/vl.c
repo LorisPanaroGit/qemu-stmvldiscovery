@@ -1280,12 +1280,12 @@ static void monitor_parse(const char *str, const char *mode, bool pretty)
 
 struct device_config {
     enum {
-        DEV_USB,       /* -usbdevice     */
-        DEV_SERIAL,    /* -serial        */
-        DEV_PARALLEL,  /* -parallel      */
-        DEV_DEBUGCON,  /* -debugcon */
-        DEV_GDB,       /* -gdb, -s */
-        DEV_SCLP,      /* s390 sclp */
+        DEV_USB = 0,       /* -usbdevice     */
+        DEV_SERIAL = 1,    /* -serial        */
+        DEV_PARALLEL = 2,  /* -parallel      */
+        DEV_DEBUGCON = 3,  /* -debugcon */
+        DEV_GDB = 4,       /* -gdb, -s */
+        DEV_SCLP = 5,      /* s390 sclp */
     } type;
     const char *cmdline;
     Location loc;
