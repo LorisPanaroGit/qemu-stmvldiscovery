@@ -28,6 +28,7 @@
 #include "hw/sysbus.h"
 #include "hw/ssi/ssi.h"
 #include "qom/object.h"
+#include "hw/ssi/spi_slave.h"
 
 #define STM_SPI_CR1     0x00
 #define STM_SPI_CR2     0x04
@@ -65,7 +66,7 @@ struct STM32F2XXSPIState {
     uint32_t spi_i2spr;
 
     qemu_irq irq;
-    SSIBus *ssi;
+    SSIBus *ssi;. -
 };
 
 #endif /* HW_STM32F2XX_SPI_H */
