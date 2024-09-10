@@ -452,6 +452,7 @@ config STM32F100_SOC
     select STM32F2XX_USART
     select STM32F2XX_SPI
     select STM32F2XX_RCC
+    select SPI_SLAVE
 
 config STM32F205_SOC
     bool

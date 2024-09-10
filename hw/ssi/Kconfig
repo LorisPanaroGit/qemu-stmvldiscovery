@@ -20,6 +20,7 @@ config XILINX_SPIPS
 config STM32F2XX_SPI
     bool
     select SSI
+    select SPI_SLAVE
 
 config BCM2835_SPI
     bool
@@ -28,3 +29,6 @@ config BCM2835_SPI
 config PNV_SPI
     bool
     select SSI
+
+config SPI_SLAVE
+    bool
