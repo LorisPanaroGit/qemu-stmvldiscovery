@@ -200,8 +200,6 @@ static void stm32f2xx_spi_init(Object *obj)
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
 
     s->ssi = ssi_create_bus(dev, "ssi");
-
-    dev = ssi_create_peripheral(s->ssi, TYPE_SPI_SLAVE);
 }
 
 static void stm32f2xx_spi_class_init(ObjectClass *klass, void *data)
