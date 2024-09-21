@@ -7,7 +7,7 @@
 static uint32_t SPISLAVEState_transfer(SSIPeripheral *spi, uint32_t value) {
     SPISLAVEState *s = SPI_SLAVE(spi);
     s->val = value;
-    printf("Value on SSI bus: %c; value received: %c\n", value, s->val);
+    printf("%c", s->val);
     return s->val;
 }
 
