@@ -23,11 +23,15 @@ static const VMStateDescription vmstate_spi_slave = {
 };
 
 static void SPISLAVEState_realize(SSIPeripheral *dev, Error **errp) {
+    DeviceState *d = DEVICE(dev);
+    BusState *b = d->parent_bus;
     printf("SPI-PERIPHERAL created...\n");
+    printf("CS: %u\n", dev->cs_index);
+    printf("BUS: %s\n", b->name);
 }
 
 static Property SPISLAVEState_prop[] = {
-    DEFINE_PROP_STRING("bus", SPISLAVEState, master_bus_name),
+    DEFINE_PROP_STRING("master-bus", SPISLAVEState, master_bus_name),
     DEFINE_PROP_END_OF_LIST()
 };
 
