@@ -28,7 +28,6 @@
 #include "hw/sysbus.h"
 #include "hw/ssi/ssi.h"
 #include "qom/object.h"
-#include "hw/ssi/spi_slave.h"
 
 #define STM_SPI_CR1     0x00
 #define STM_SPI_CR2     0x04

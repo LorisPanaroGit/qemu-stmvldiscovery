@@ -1,8 +1,24 @@
+/*
+    Removing spi_slave.h header from file system
+    spi-slave will not be embedded in any board/device so it is redundant
+*/
+
 #include "qemu/osdep.h"
-#include "hw/ssi/spi_slave.h"
 #include "migration/vmstate.h"
 #include "qemu/module.h"
 #include "hw/qdev-properties.h"
+
+#include "hw/ssi/ssi.h"
+#include "qom/object.h"
+
+#define TYPE_SPI_SLAVE "spi-slave"
+OBJECT_DECLARE_SIMPLE_TYPE(SPISLAVEState, SPI_SLAVE)
+
+struct SPISLAVEState {
+    SSIPeripheral parent_obj;
+    uint8_t val;
+};
+
 
 static uint32_t SPISLAVEState_transfer(SSIPeripheral *spi, uint32_t value) {
     SPISLAVEState *s = SPI_SLAVE(spi);
@@ -22,18 +38,10 @@ static const VMStateDescription vmstate_spi_slave = {
     }
 };
 
-static void SPISLAVEState_realize(SSIPeripheral *dev, Error **errp) {
-    DeviceState *d = DEVICE(dev);
-    BusState *b = d->parent_bus;
-    printf("SPI-PERIPHERAL created...\n");
-    printf("CS: %u\n", dev->cs_index);
-    printf("BUS: %s\n", b->name);
+static void SPISLAVEState_realize(SSIPeripheral *spi_slave, Error **errp) {
+    DeviceState *dev = DEVICE(spi_slave);
+    printf("%s created...\n", dev->id); 
 }
-
-static Property SPISLAVEState_prop[] = {
-    DEFINE_PROP_STRING("master-bus", SPISLAVEState, master_bus_name),
-    DEFINE_PROP_END_OF_LIST()
-};
 
 static void SPISLAVEState_reset(DeviceState *dev) {
     SPISLAVEState *s = SPI_SLAVE(dev);
@@ -47,8 +55,6 @@ static void SPISLAVEState_class_init(ObjectClass *klass, void *data) {
     k->transfer = SPISLAVEState_transfer;
     dc->reset = SPISLAVEState_reset;
     dc->vmsd = &vmstate_spi_slave;
-    device_class_set_props(dc, SPISLAVEState_prop);
-    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
 static const TypeInfo SPISLAVEState_info = {
