@@ -191,15 +191,13 @@ static const VMStateDescription vmstate_stm32f2xx_spi = {
 static void stm32f2xx_spi_init(Object *obj)
 {
     STM32F2XXSPIState *s = STM32F2XX_SPI(obj);
-    DeviceState *dev = DEVICE(obj);
+    //DeviceState *dev = DEVICE(obj);
 
     memory_region_init_io(&s->mmio, obj, &stm32f2xx_spi_ops, s,
                           TYPE_STM32F2XX_SPI, 0x400);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
-
-    s->ssi = ssi_create_bus(dev, "ssi");
 }
 
 static void stm32f2xx_spi_class_init(ObjectClass *klass, void *data)

@@ -38,6 +38,7 @@
 
 static const uint32_t usart_addr[STM_NUM_USARTS] = { 0x40013800, 0x40004400, 0x40004800 };
 static const uint32_t spi_addr[STM_NUM_SPIS] = { 0x40013000, 0x40003800 };
+static const char *ssi_bus_names[STM_NUM_SPIS] = {"SPI1", "SPI2"};
 static const uint32_t rcc_addr = 0x40021000;
 
 static const int usart_irq[STM_NUM_USARTS] = {37, 38, 39};
@@ -147,6 +148,8 @@ static void stm32f100_soc_realize(DeviceState *dev_soc, Error **errp)
         busdev = SYS_BUS_DEVICE(dev);
         sysbus_mmio_map(busdev, 0, spi_addr[i]);
         sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, spi_irq[i]));
+        /*Realize SSI busses*/
+        s->spi[i].ssi = ssi_create_bus(dev, ssi_bus_names[i]);
     }
 
     dev = DEVICE(&(s->rcc));
