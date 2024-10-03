@@ -151,7 +151,7 @@ static void stm32f100_soc_realize(DeviceState *dev_soc, Error **errp)
         /*Realize SSI busses*/
         s->spi[i].ssi = ssi_create_bus(dev, ssi_bus_names[i]);
     }
-
+    /*RCC register instantiation*/
     dev = DEVICE(&(s->rcc));
     busdev = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(busdev, errp);
