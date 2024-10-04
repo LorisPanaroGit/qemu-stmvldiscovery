@@ -62,7 +62,7 @@ static void stm32f100_soc_initfn(Object *obj)
     }
 
     for (i = 0; i < STM_NUM_GPIOS; i++) {
-        object_initialize_child(obj, "gpio[*]", &s->spi[i], TYPE_STM32F2XX_GPIO);
+        object_initialize_child(obj, "gpio[*]", &s->gpio[i], TYPE_STM32F2XX_GPIO);
     }
 
     s->sysclk = qdev_init_clock_in(DEVICE(s), "sysclk", NULL, NULL, 0);
