@@ -28,6 +28,7 @@
 #include "hw/char/stm32f2xx_usart.h"
 #include "hw/ssi/stm32f2xx_spi.h"
 #include "hw/misc/stm32f2xx_rcc.h"
+#include "hw/gpio/stm32f2xx_gpio.h"
 #include "hw/arm/armv7m.h"
 #include "qom/object.h"
 #include "hw/clock.h"
@@ -37,6 +38,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(STM32F100State, STM32F100_SOC)
 
 #define STM_NUM_USARTS 3
 #define STM_NUM_SPIS 2
+#define STM_NUM_GPIOS 5
 
 #define FLASH_BASE_ADDRESS 0x08000000
 #define FLASH_SIZE (128 * 1024)
@@ -50,6 +52,7 @@ struct STM32F100State {
 
     STM32F2XXUsartState usart[STM_NUM_USARTS];
     STM32F2XXSPIState spi[STM_NUM_SPIS];
+    STM32F2XXGpioState gpio[STM_NUM_GPIOS];
     STM32F2XXRccState rcc;
 
     MemoryRegion sram;

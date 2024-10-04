@@ -39,6 +39,7 @@
 static const uint32_t usart_addr[STM_NUM_USARTS] = { 0x40013800, 0x40004400, 0x40004800 };
 static const uint32_t spi_addr[STM_NUM_SPIS] = { 0x40013000, 0x40003800 };
 static const char *ssi_bus_names[STM_NUM_SPIS] = {"SPI1", "SPI2"};
+static const uint32_t gpio_addr[STM_NUM_GPIOS] = {0x40010800, 0x40010C00, 0x40011000, 0x40011400, 0x40011800};
 static const uint32_t rcc_addr = 0x40021000;
 
 static const int usart_irq[STM_NUM_USARTS] = {37, 38, 39};
@@ -58,6 +59,10 @@ static void stm32f100_soc_initfn(Object *obj)
 
     for (i = 0; i < STM_NUM_SPIS; i++) {
         object_initialize_child(obj, "spi[*]", &s->spi[i], TYPE_STM32F2XX_SPI);
+    }
+
+    for (i = 0; i < STM_NUM_GPIOS; i++) {
+        object_initialize_child(obj, "gpio[*]", &s->spi[i], TYPE_STM32F2XX_GPIO);
     }
 
     s->sysclk = qdev_init_clock_in(DEVICE(s), "sysclk", NULL, NULL, 0);
@@ -151,6 +156,15 @@ static void stm32f100_soc_realize(DeviceState *dev_soc, Error **errp)
         /*Realize SSI busses*/
         s->spi[i].ssi = ssi_create_bus(dev, ssi_bus_names[i]);
     }
+
+    /*GPIOs*/
+    for(i = 0; i < STM_NUM_GPIOS; i++) {
+        dev = DEVICE(&(s->gpio[i]));
+        busdev = SYS_BUS_DEVICE(dev);
+        sysbus_realize_and_unref(busdev, errp);
+        sysbus_mmio_map(busdev, 0, gpio_addr[i]);
+    }
+
     /*RCC register instantiation*/
     dev = DEVICE(&(s->rcc));
     busdev = SYS_BUS_DEVICE(dev);
@@ -173,11 +187,11 @@ static void stm32f100_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("CEC",       0x40007800, 0x400);
     create_unimplemented_device("AFIO",      0x40010000, 0x400);
     create_unimplemented_device("EXTI",      0x40010400, 0x400);
-    create_unimplemented_device("GPIOA",     0x40010800, 0x400);
-    create_unimplemented_device("GPIOB",     0x40010C00, 0x400);
-    create_unimplemented_device("GPIOC",     0x40011000, 0x400);
-    create_unimplemented_device("GPIOD",     0x40011400, 0x400);
-    create_unimplemented_device("GPIOE",     0x40011800, 0x400);
+    //create_unimplemented_device("GPIOA",     0x40010800, 0x400);
+    //create_unimplemented_device("GPIOB",     0x40010C00, 0x400);
+    //create_unimplemented_device("GPIOC",     0x40011000, 0x400);
+    //create_unimplemented_device("GPIOD",     0x40011400, 0x400);
+    //create_unimplemented_device("GPIOE",     0x40011800, 0x400);
     create_unimplemented_device("ADC1",      0x40012400, 0x400);
     create_unimplemented_device("timer[1]",  0x40012C00, 0x400);
     create_unimplemented_device("timer[15]", 0x40014000, 0x400);
