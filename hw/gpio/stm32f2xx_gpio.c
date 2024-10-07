@@ -6,6 +6,15 @@
 #include "hw/irq.h"
 #include "migration/vmstate.h"
 
+static void set_pin_cfg(pinObj *to_set, uint8_t pin_index, uint32_t reg_word) {
+    uint8_t mode;
+    uint8_t cnf;
+    mode = (reg_word >> (pin_index * SHAMT)) & GPIOx_MODE_MASK;
+    cnf = ((reg_word >> (pin_index * SHAMT)) & GPIOx_CNFy_MASK) >> 2;
+    to_set->mode = mode;
+    to_set->cnf = cnf;
+}
+
 static const VMStateDescription vmstate_stm32f2xx_gpio = {
     .name = TYPE_STM32F2XX_GPIO,
     .version_id = 1,
@@ -55,20 +64,35 @@ static uint64_t stm32f2xx_gpio_read(void *opaque, hwaddr addr, unsigned int size
     return to_ret;
 }
 
+/*TODO:
+1) model the GPIO in/out configuration
+2) IDR register should be read-only because it is written from the outside, and not from the SYSBUS -> [DONE]*/
 static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsigned int size) {
+    int pin_index;
     STM32F2XXGpioState *s = STM32F2XX_GPIO(opaque);
     switch(addr) {
+        /*GPIO ports [0-7] -> LOW*/
         case GPIO_CRL :
             s->crl = data;
+            /*Reconfigure PIN LOW status each time CLR is written*/
+            for(pin_index = 0; pin_index < GPIOx_NUM_PINS_HALF / 2; pin_index++) {
+                set_pin_cfg(&s->pin_state[pin_index], pin_index, s->crl);
+            }
             break;
+        /*GPIO ports [8-15] -> HIGH*/
         case GPIO_CRH :
             s->crh = data;
+            for(pin_index = 0; pin_index < GPIOx_NUM_PINS_HALF; pin_index++) {
+                set_pin_cfg(&s->pin_state[pin_index + GPIOx_NUM_PINS_HALF], pin_index, s->crl);
+            }
             break;
         case GPIO_IDR :
-            s->idr = data;
+            /*This register should be READ-ONLY*/
+            qemu_log_mask(LOG_UNIMP, "%s: GPIO->IDR is read-only\n", __func__);
             break;
         case GPIO_ODR :
             s->odr = data;
+            /*use qemu_set_irq for GPIO pin setting*/
             break;
         case GPIO_BSRR :
             s->bsrr = data;
@@ -102,10 +126,25 @@ static void stm32f2xx_gpio_reset(DeviceState *dev) {
     s->lckr = 0x0;
 }
 
+
+/*Hanlde to GPIO input ports
+1) n = pin number
+2) level = value of the input pin*/
+static void stm32f2xx_gpio_set(void *opaque, int n, int level) {
+    STM32F2XXGpioState *gpio_state = STM32F2XX_GPIO(opaque);
+    assert(n >= 0 && n < ARRAY_SIZE(gpio_state->irq));
+    printf("Parameter N: %d\n", n);
+    printf("Parameter LEVEL: %d\n", level);
+    printf("Mode of pin %d: %u\n", n, gpio_state->pin_state->mode);
+}
+
 static void stm32f2xx_gpio_init(Object *obj) {
     STM32F2XXGpioState *gpio_state = STM32F2XX_GPIO(obj);
+    DeviceState *dev = DEVICE(obj);
     memory_region_init_io(&gpio_state->mmio, obj, &stm32f2xx_gpio_ops, gpio_state, TYPE_STM32F2XX_GPIO, 0x400);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &gpio_state->mmio);
+    qdev_init_gpio_in(dev, stm32f2xx_gpio_set, GPIOx_NUM_PINS);
+    qdev_init_gpio_out(dev, gpio_state->irq, GPIOx_NUM_PINS);
 }
 
 static void stm32f2xx_gpio_class_init(ObjectClass *klass, void *data) {
