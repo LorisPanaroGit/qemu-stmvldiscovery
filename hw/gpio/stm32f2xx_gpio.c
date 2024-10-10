@@ -15,6 +15,22 @@ static void set_pin_cfg(pinObj *to_set, uint8_t pin_index, uint32_t reg_word) {
     to_set->cnf = cnf;
 }
 
+/*If MODEx == 0: pin is input
+If MODEx > 0: pin is output*/
+static bool is_output(STM32F2XXGpioState *gpio_state, int pin_index) {
+    return gpio_state->pin_state[pin_index].mode > 0;
+}
+
+/*If CNFx == 0: output is PUSH-PULL
+If CNFx == 1: output is OPEN-DRAIN*/
+static bool is_open_drain(STM32F2XXGpioState *gpio_state, int pin_index) {
+    return gpio_state->pin_state[pin_index].cnf == OPEN_DRAIN_OUTPUT;
+}
+
+static bool is_push_pull(STM32F2XXGpioState *gpio_state, int pin_index) {
+    return gpio_state->pin_state[pin_index].cnf == PUSH_PULL_OUTPUT;
+}
+
 static const VMStateDescription vmstate_stm32f2xx_gpio = {
     .name = TYPE_STM32F2XX_GPIO,
     .version_id = 1,
@@ -30,6 +46,30 @@ static const VMStateDescription vmstate_stm32f2xx_gpio = {
         VMSTATE_END_OF_LIST()
     }
 };
+
+/*Whenever ODR is written, stm32f2xx_gpio_set_irq() will trigger and interrupt on the @n pin*/
+static void stm32f2xx_gpio_set_irq(STM32F2XXGpioState *gpio_state, int n, int level) {
+    /*is_output() check is already done at higher level*/
+    if(is_push_pull(gpio_state, n)) {
+
+    } else {
+        
+    }
+}
+
+/*Handle to GPIO input ports
+1) n = pin number
+2) level = value of the input pin*/
+static void stm32f2xx_gpio_set(void *opaque, int n, int level) {
+    STM32F2XXGpioState *gpio_state = STM32F2XX_GPIO(opaque);
+    assert(n >= 0 && n < ARRAY_SIZE(gpio_state->irq));
+    printf("Parameter N: %d\n", n);
+    printf("Parameter LEVEL: %d\n", level);
+    printf("Mode of pin %d: %u\n", n, gpio_state->pin_state->mode);
+    if(is_output(gpio_state, n)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Line %d can't be driven externally\n", n);
+    }
+}
 
 static uint64_t stm32f2xx_gpio_read(void *opaque, hwaddr addr, unsigned int size) {
     uint64_t to_ret;
@@ -69,6 +109,7 @@ static uint64_t stm32f2xx_gpio_read(void *opaque, hwaddr addr, unsigned int size
 2) IDR register should be read-only because it is written from the outside, and not from the SYSBUS -> [DONE]*/
 static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsigned int size) {
     int pin_index;
+    int level;
     STM32F2XXGpioState *s = STM32F2XX_GPIO(opaque);
     switch(addr) {
         /*GPIO ports [0-7] -> LOW*/
@@ -88,11 +129,18 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
             break;
         case GPIO_IDR :
             /*This register should be READ-ONLY*/
-            qemu_log_mask(LOG_UNIMP, "%s: GPIO->IDR is read-only\n", __func__);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: GPIO->IDR is read-only\n", __func__);
             break;
         case GPIO_ODR :
-            s->odr = data;
+            /*Before writing, mask @data 0xFFFF to reset reserved bits [16:31] of ODR*/
+            s->odr = data & 0xFFFF;
             /*use qemu_set_irq for GPIO pin setting*/
+            for(pin_index = 0; pin_index < GPIOx_NUM_PINS; pin_index++) {
+                if(is_output(s, pin_index)) {
+                    level = extract32(s->odr, pin_index, 1);
+                    stm32f2xx_gpio_set_irq(s, pin_index, level);
+                }
+            }
             break;
         case GPIO_BSRR :
             s->bsrr = data;
@@ -124,18 +172,6 @@ static void stm32f2xx_gpio_reset(DeviceState *dev) {
     s->bsrr = 0x0;
     s->brr = 0x0;
     s->lckr = 0x0;
-}
-
-
-/*Hanlde to GPIO input ports
-1) n = pin number
-2) level = value of the input pin*/
-static void stm32f2xx_gpio_set(void *opaque, int n, int level) {
-    STM32F2XXGpioState *gpio_state = STM32F2XX_GPIO(opaque);
-    assert(n >= 0 && n < ARRAY_SIZE(gpio_state->irq));
-    printf("Parameter N: %d\n", n);
-    printf("Parameter LEVEL: %d\n", level);
-    printf("Mode of pin %d: %u\n", n, gpio_state->pin_state->mode);
 }
 
 static void stm32f2xx_gpio_init(Object *obj) {
