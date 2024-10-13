@@ -63,14 +63,15 @@ static void stm32f2xx_gpio_set_irq(STM32F2XXGpioState *gpio_state, int n, int le
     }
 }
 
-static void stm32f2xx_gpio_configure_pins(STM32F2XXGpioState *gpio_state, int start, int end, uint32_t reg) {
+static void stm32f2xx_gpio_config_pins(STM32F2XXGpioState *gpio_state, int start, int end, uint32_t reg) {
     int pin_index;
     for(pin_index = start; pin_index < end; pin_index++) {
+        /*pin index - start: shift towards 0 the pin index of pins >= 8*/
         set_pin_cfg(&gpio_state->pin_state[pin_index], pin_index - start, reg);
     }
 }
 
-static void stm32f2xx_gpio_configure_output_irqs(STM32F2XXGpioState *gpio_state) {
+static void stm32f2xx_gpio_config_output_irqs(STM32F2XXGpioState *gpio_state) {
     int pin_index;
     int level;
     for(pin_index = 0; pin_index < GPIOx_NUM_PINS; pin_index++) {
