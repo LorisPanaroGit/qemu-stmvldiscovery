@@ -143,12 +143,12 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
         case GPIO_CRL :
             s->crl = data;
             /*Reconfigure PIN LOW status each time CLR is written*/
-            stm32f2xx_gpio_configure_pins(s, 0, GPIOx_NUM_PINS_HALF, s->crl);
+            stm32f2xx_gpio_config_pins(s, 0, GPIOx_NUM_PINS_HALF, s->crl);
             break;
         /*GPIO ports [8-15] -> HIGH*/
         case GPIO_CRH :
             s->crh = data;
-            stm32f2xx_gpio_configure_pins(s, GPIOx_NUM_PINS_HALF, GPIOx_NUM_PINS, s->crh);
+            stm32f2xx_gpio_config_pins(s, GPIOx_NUM_PINS_HALF, GPIOx_NUM_PINS, s->crh);
             break;
         case GPIO_IDR :
             /*This register should be READ-ONLY*/
@@ -158,7 +158,7 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
             /*Before writing, mask @data 0xFFFF to reset reserved bits [16:31] of ODR*/
             s->odr = data & 0xFFFF;
             /*use qemu_set_irq for GPIO pin setting*/
-            stm32f2xx_gpio_configure_output_irqs(s);
+            stm32f2xx_gpio_config_output_irqs(s);
             break;
         case GPIO_BSRR :
             /*For atomic bit set/reset, the ODR bits can be individually set and cleared by writing to
@@ -171,15 +171,15 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
             s->odr &= ~bits_to_reset;
             s->odr |= bits_to_set;
             /*use qemu_set_irq for GPIO pin setting*/
-            stm32f2xx_gpio_configure_output_irqs(s);
+            stm32f2xx_gpio_config_output_irqs(s);
             break;
         case GPIO_BRR :
             /*Before writing, mask @data 0xFFFF to reset reserved bits [16:31] of BRR*/
             s->brr = data & 0xFFFF;
             /*0: No action on the corresponding ODRx bit
             1: Reset the corresponding ODRx bit*/
-            s->odr &= ~bits_to_reset;
-            stm32f2xx_gpio_configure_output_irqs(s);
+            s->odr &= ~s->brr;
+            stm32f2xx_gpio_config_output_irqs(s);
             break;
         case GPIO_LCKR :
             s->lckr = data;
