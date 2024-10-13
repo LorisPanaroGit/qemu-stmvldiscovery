@@ -53,12 +53,31 @@ static void stm32f2xx_gpio_set_irq(STM32F2XXGpioState *gpio_state, int n, int le
     /*is_output() check is already done at higher level*/
     if(is_push_pull(gpio_state, n)) {
         qemu_set_irq(gpio_state->irq[n], level);
-        printf("ciao\n");
+        printf("Pin number: %d\n", n);
+        printf("Level: %d\n", level);
     } else if(is_open_drain(gpio_state, n) && level == 0) {
         /*OPEN-DRAIN case: if @level is 1, the line cannot be set; if @level is 0, then it can be driven LOW*/
         qemu_set_irq(gpio_state->irq[n], 0);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR, "Line %d is OPEN-DRAIN: cannot be set to 1\n", n);
+    }
+}
+
+static void stm32f2xx_gpio_configure_pins(STM32F2XXGpioState *gpio_state, int start, int end, uint32_t reg) {
+    int pin_index;
+    for(pin_index = start; pin_index < end; pin_index++) {
+        set_pin_cfg(&gpio_state->pin_state[pin_index], pin_index - start, reg);
+    }
+}
+
+static void stm32f2xx_gpio_configure_output_irqs(STM32F2XXGpioState *gpio_state) {
+    int pin_index;
+    int level;
+    for(pin_index = 0; pin_index < GPIOx_NUM_PINS; pin_index++) {
+        if(is_output(gpio_state, pin_index)) {
+            level = extract32(gpio_state->odr, pin_index, 1);
+            stm32f2xx_gpio_set_irq(gpio_state, pin_index, level);
+        }
     }
 }
 
@@ -113,8 +132,6 @@ static uint64_t stm32f2xx_gpio_read(void *opaque, hwaddr addr, unsigned int size
 1) model the GPIO in/out configuration
 2) IDR register should be read-only because it is written from the outside, and not from the SYSBUS -> [DONE]*/
 static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsigned int size) {
-    int pin_index;
-    int level;
     uint32_t bits_to_set;
     uint32_t bits_to_reset;
     STM32F2XXGpioState *s = STM32F2XX_GPIO(opaque);
@@ -123,16 +140,12 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
         case GPIO_CRL :
             s->crl = data;
             /*Reconfigure PIN LOW status each time CLR is written*/
-            for(pin_index = 0; pin_index < GPIOx_NUM_PINS_HALF / 2; pin_index++) {
-                set_pin_cfg(&s->pin_state[pin_index], pin_index, s->crl);
-            }
+            stm32f2xx_gpio_configure_pins(s, 0, GPIOx_NUM_PINS_HALF, s->crl);
             break;
         /*GPIO ports [8-15] -> HIGH*/
         case GPIO_CRH :
             s->crh = data;
-            for(pin_index = 0; pin_index < GPIOx_NUM_PINS_HALF; pin_index++) {
-                set_pin_cfg(&s->pin_state[pin_index + GPIOx_NUM_PINS_HALF], pin_index, s->crh);
-            }
+            stm32f2xx_gpio_configure_pins(s, GPIOx_NUM_PINS_HALF, GPIOx_NUM_PINS, s->crh);
             break;
         case GPIO_IDR :
             /*This register should be READ-ONLY*/
@@ -142,17 +155,12 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
             /*Before writing, mask @data 0xFFFF to reset reserved bits [16:31] of ODR*/
             s->odr = data & 0xFFFF;
             /*use qemu_set_irq for GPIO pin setting*/
-            for(pin_index = 0; pin_index < GPIOx_NUM_PINS; pin_index++) {
-                if(is_output(s, pin_index)) {
-                    level = extract32(s->odr, pin_index, 1);
-                    stm32f2xx_gpio_set_irq(s, pin_index, level);
-                }
-            }
+            stm32f2xx_gpio_configure_output_irqs(s);
             break;
         case GPIO_BSRR :
             /*For atomic bit set/reset, the ODR bits can be individually set and cleared by writing to
             the GPIOx_BSRR register (x = A .. E).*/
-            s->bsrr = data & 0xFFFF;
+            s->bsrr = data;
             bits_to_reset = extract32(s->bsrr, GPIOx_NUM_PINS, GPIOx_NUM_PINS);
             bits_to_set = extract32(s->bsrr, 0, GPIOx_NUM_PINS);
             /*0: No action on the corresponding ODRx bit
@@ -160,12 +168,7 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
             s->odr &= ~bits_to_reset;
             s->odr |= bits_to_set;
             /*use qemu_set_irq for GPIO pin setting*/
-            for(pin_index = 0; pin_index < GPIOx_NUM_PINS; pin_index++) {
-                if(is_output(s, pin_index)) {
-                    level = extract32(s->odr, pin_index, 1);
-                    stm32f2xx_gpio_set_irq(s, pin_index, level);
-                }
-            }
+            stm32f2xx_gpio_configure_output_irqs(s);
             break;
         case GPIO_BRR :
             s->brr = data;
