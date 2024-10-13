@@ -132,8 +132,7 @@ static uint64_t stm32f2xx_gpio_read(void *opaque, hwaddr addr, unsigned int size
 }
 
 /*TODO:
-1) model the GPIO in/out configuration
-2) IDR register should be read-only because it is written from the outside, and not from the SYSBUS -> [DONE]*/
+1) model LCKR behaviour*/
 static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsigned int size) {
     uint32_t bits_to_set;
     uint32_t bits_to_reset;
