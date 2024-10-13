@@ -113,10 +113,12 @@ static uint64_t stm32f2xx_gpio_read(void *opaque, hwaddr addr, unsigned int size
             to_ret = s->odr;
             break;
         case GPIO_BSRR :
-            to_ret = s->bsrr;
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: GPIO->BSRR is write-only\n", __func__);
+            to_ret = 0x0;
             break;
         case GPIO_BRR :
-            to_ret = s->brr;
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: GPIO->BRR is write-only\n", __func__);
+            to_ret = 0x0;
             break;
         case GPIO_LCKR :
             to_ret = s->lckr;
@@ -172,7 +174,12 @@ static void stm32f2xx_gpio_write(void *opaque, hwaddr addr, uint64_t data, unsig
             stm32f2xx_gpio_configure_output_irqs(s);
             break;
         case GPIO_BRR :
-            s->brr = data;
+            /*Before writing, mask @data 0xFFFF to reset reserved bits [16:31] of BRR*/
+            s->brr = data & 0xFFFF;
+            /*0: No action on the corresponding ODRx bit
+            1: Reset the corresponding ODRx bit*/
+            s->odr &= ~bits_to_reset;
+            stm32f2xx_gpio_configure_output_irqs(s);
             break;
         case GPIO_LCKR :
             s->lckr = data;
