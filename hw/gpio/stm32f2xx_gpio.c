@@ -88,11 +88,14 @@ static void stm32f2xx_gpio_config_output_irqs(STM32F2XXGpioState *gpio_state) {
 static void stm32f2xx_gpio_set(void *opaque, int n, int level) {
     STM32F2XXGpioState *gpio_state = STM32F2XX_GPIO(opaque);
     assert(n >= 0 && n < ARRAY_SIZE(gpio_state->irq));
-    printf("Parameter N: %d\n", n);
-    printf("Parameter LEVEL: %d\n", level);
-    printf("Mode of pin %d: %u\n", n, gpio_state->pin_state->mode);
+    unsigned short idr_mask = (level << n);
+    //printf("Parameter N: %d\n", n);
+    //printf("Parameter LEVEL: %d\n", level);
+    //printf("Mode of pin %d: %u\n", n, gpio_state->pin_state->mode);
     if(is_output(gpio_state, n)) {
         qemu_log_mask(LOG_GUEST_ERROR, "Line %d can't be driven externally\n", n);
+    } else {
+        gpio_state->idr = (level) ? (gpio_state->idr | idr_mask) : (gpio_state->idr &~ idr_mask);
     }
 }
 
