@@ -2,7 +2,14 @@
 #include "libqtest-single.h"
 
 static void stm32f2xx_system_reset() {
+    QDict *r;
+    r = qtest_qmp(global_qtest, "{'execute': 'system_reset'}");
+    g_assert_false(qdict_haskey(r, "error"));
+    qobject_unref(r);
+}
 
+static void stm32f2xx_test_reset_values() {
+    
 }
 
 static void stm32f2xx_test_gpio_output_mode(const void *data) {
