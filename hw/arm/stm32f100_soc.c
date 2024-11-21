@@ -48,21 +48,25 @@ static const int spi_irq[STM_NUM_SPIS] = {35, 36};
 static void stm32f100_soc_initfn(Object *obj)
 {
     STM32F100State *s = STM32F100_SOC(obj);
+    g_autofree char *periph_name;
     int i;
 
     object_initialize_child(obj, "armv7m", &s->armv7m, TYPE_ARMV7M);
     object_initialize_child(obj, "rcc", &s->rcc, TYPE_STM32F2XX_RCC);
 
     for (i = 0; i < STM_NUM_USARTS; i++) {
-        object_initialize_child(obj, "usart[*]", &s->usart[i], TYPE_STM32F2XX_USART);
+        periph_name = g_strdup_printf("USART%c", '1' + i);
+        object_initialize_child(obj, periph_name, &s->usart[i], TYPE_STM32F2XX_USART);
     }
 
     for (i = 0; i < STM_NUM_SPIS; i++) {
-        object_initialize_child(obj, "spi[*]", &s->spi[i], TYPE_STM32F2XX_SPI);
+        periph_name = g_strdup_printf("SPI%c", '1' + i);
+        object_initialize_child(obj, periph_name, &s->spi[i], TYPE_STM32F2XX_SPI);
     }
 
     for (i = 0; i < STM_NUM_GPIOS; i++) {
-        object_initialize_child(obj, "gpio[*]", &s->gpio[i], TYPE_STM32F2XX_GPIO);
+        periph_name = g_strdup_printf("GPIO%c", 'A' + i);
+        object_initialize_child(obj, periph_name, &s->gpio[i], TYPE_STM32F2XX_GPIO);
     }
 
     s->sysclk = qdev_init_clock_in(DEVICE(s), "sysclk", NULL, NULL, 0);
