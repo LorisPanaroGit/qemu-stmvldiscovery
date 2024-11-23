@@ -208,7 +208,7 @@ qtests_aspeed = \
 
 qtests_stm32f2xx = \
   [
-    'stm32f2xx_gpio_test.c']
+    'stm32f2xx_gpio-test']
 
 qtests_stm32l4x5 = \
   ['stm32l4x5_exti-test',
@@ -230,7 +230,7 @@ qtests_arm = \
   (config_all_devices.has_key('CONFIG_TPM_TIS_I2C') ? ['tpm-tis-i2c-test'] : []) + \
   (config_all_devices.has_key('CONFIG_VEXPRESS') ? ['test-arm-mptimer'] : []) + \
   (config_all_devices.has_key('CONFIG_MICROBIT') ? ['microbit-test'] : []) + \
-  (config_all_devices.has_key('STM32F100_SOC') ? qtests_stm32f2xx : []) + \
+  (config_all_devices.has_key('CONFIG_STM32F100_SOC') ? qtests_stm32f2xx : []) + \
   (config_all_devices.has_key('CONFIG_STM32L4X5_SOC') ? qtests_stm32l4x5 : []) + \
   (config_all_devices.has_key('CONFIG_FSI_APB2OPB_ASPEED') ? ['aspeed_fsi-test'] : []) + \
   (config_all_devices.has_key('CONFIG_STM32L4X5_SOC') and
