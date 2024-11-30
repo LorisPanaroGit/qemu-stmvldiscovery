@@ -29,6 +29,9 @@
 #define RESET_BRR  0x00000000
 #define RESET_LCKR 0x00000000
 
+/* SoC forwards GPIOs to SysCfg */
+#define SYSCFG "/machine/soc"
+
 unsigned int reset_vals[GPIO_NUM_REGS] = {
     RESET_CRL,
     RESET_CRH,
@@ -47,6 +50,11 @@ static void gpio_writel(unsigned int gpio_port, unsigned int reg, uint32_t val) 
 /*Helper function for readl: pass the GPIO_X group for offset computing*/
 static uint32_t gpio_readl(unsigned int gpio_port, unsigned int reg) {
     return readl(gpio_port + reg);
+}
+
+/*Helper function to set IRQs on GPIO pins*/
+static void gpio_set_irq(unsigned int gpio_id, int num, int level) {
+    
 }
 
 static void stm32f2xx_system_reset(void) {
@@ -70,7 +78,7 @@ static void stm32f2xx_test_reset_values(void) {
     for(gpio_addr = GPIO_A_ADDR; gpio_addr <= GPIO_E_ADDR; gpio_addr += GPIO_PORT_SIZE) {
         for(reg_addr = GPIOx_CRL; reg_addr <= GPIOx_LCKR; reg_addr += GPIO_REG_SIZE) {
             read_data = gpio_readl(gpio_addr, reg_addr);
-            g_assert_cmphex(read_data, ==, reset_vals[(reg_addr/GPIO_REG_SIZE) - 1]);
+            g_assert_cmphex(read_data, ==, reset_vals[(reg_addr/GPIO_REG_SIZE)]);
         }
     }
 }
