@@ -53,9 +53,9 @@ static uint32_t gpio_readl(unsigned int gpio_port, unsigned int reg) {
 }
 
 /*Helper function to set IRQs on GPIO pins*/
-static void gpio_set_irq(unsigned int gpio_id, int num, int level) {
-    
-}
+//static void gpio_set_irq(unsigned int gpio_id, int num, int level) {
+//    
+//}
 
 static void stm32f2xx_system_reset(void) {
     QDict *r;
