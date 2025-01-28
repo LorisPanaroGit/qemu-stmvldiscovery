@@ -10,6 +10,7 @@ meson test qtest-arm/stm32f2xx_gpio-test -> run single meson test for GPIO
 
 #define GPIO_PORT_SIZE 0x400
 #define GPIO_REG_SIZE  0x4
+#define GPIO_BASE_ADDR 0x40010800
 
 #define GPIO_A_ADDR 0x40010800
 #define GPIO_B_ADDR 0x40010C00
@@ -50,14 +51,16 @@ meson test qtest-arm/stm32f2xx_gpio-test -> run single meson test for GPIO
 #define RESET_BRR  0x00000000
 #define RESET_LCKR 0x00000000
 
+#define GPIOx_CNF_INPUT 0x0
+#define GPIOx_MODE_INPUT 0x0
+
 /* SoC forwards GPIOs to SysCfg */
 #define SYSCFG "/machine/soc"
 
-#define PIN_MASK        0xF
-#define GPIO_ADDR_MASK  (~(GPIO_PORT_SIZE - 1))
-
-#define GPIO_ADDR(data) ((uintptr_t)(data) & GPIO_ADDR_MASK)
-#define GPIO_PIN(data) ((uintptr_t)(data) & PIN_MASK)
+typedef struct gpio_pin {
+    uint32_t gpio_line;
+    uint8_t pin_number;
+} gpio_pin;
 
 unsigned int reset_vals[GPIO_NUM_REGS] = {
     RESET_CRL,
@@ -69,9 +72,15 @@ unsigned int reset_vals[GPIO_NUM_REGS] = {
     RESET_LCKR
 };
 
+static unsigned int get_gpio_id(uint32_t gpio_addr) {
+    return (gpio_addr - GPIO_BASE_ADDR) / GPIO_PORT_SIZE;
+}
+
 /*test_data() just builds a number by taking the offset of the GPIOx_line and concatenates the pin number*/
-static inline void* test_data(uint32_t gpio_line, uint8_t pin_num) {
-    return (void*)(uintptr_t) ((gpio_line & GPIO_ADDR_MASK) | (pin_num & PIN_MASK));
+static void* test_data(uint32_t gpio_line, uint8_t pin_num, gpio_pin* pin_obj) {
+    pin_obj->gpio_line = gpio_line;
+    pin_obj->pin_number = pin_num;
+    return (void*)(pin_obj);
 }
 
 /*Helper function for writel: pass the GPIO_X group for offset (register address) computing*/
@@ -85,9 +94,11 @@ static uint32_t gpio_readl(unsigned int gpio_port, unsigned int reg) {
 }
 
 /*Helper function to set IRQs on GPIO pins*/
-//static void gpio_set_irq(unsigned int gpio_id, int num, int level) {
-//    
-//}
+static void gpio_set_irq(unsigned int gpio, int num, int level) {
+    g_autofree char *name = g_strdup_printf("/machine/soc/GPIO%c",
+                                            get_gpio_id(gpio) + 'A');
+    qtest_set_irq_in(global_qtest, name, NULL, num, level);
+}
 
 static void stm32f2xx_system_reset(void) {
     QDict *r;
@@ -120,10 +131,21 @@ static void stm32f2xx_test_reset_values(void) {
 }*/
 
 static void stm32f2xx_test_gpio_input_mode(const void *data) {
-    //uint32_t pin_obj = GPIO_PIN(data);
-    //uint32_t gpio_addr = GPIO_ADDR(data);
-    //qtest_irq_intercept_in(global_qtest, SYSCFG);
-    /*Set GPIOx[GPIO_PIN_<number>] */
+    gpio_pin *test_pin = (gpio_pin*)data;
+    uint32_t pin_num = test_pin->pin_number;
+    uint32_t gpio_addr = test_pin->gpio_line;
+    uint32_t gpio_crx_reg = (pin_num >= 8) ? GPIOx_CRH : GPIOx_CRL;
+    uint32_t idr_pin_val;
+    /*Set GPIOx[GPIO_PIN_<number>] as INPUT pin -> ideally, the shift works for pin_num < 8 but the offset must be subtracted if pin_num falls into CRH*/
+    gpio_writel(gpio_addr, gpio_crx_reg, (GPIOx_MODE_INPUT | GPIOx_CNF_INPUT) << (pin_num * 4));
+    /*Set digital line to 1; check IDR is set to 1*/
+    gpio_set_irq(gpio_addr, pin_num, 1);
+    idr_pin_val = gpio_readl(gpio_addr, GPIOx_IDR) >> pin_num;
+    g_assert_cmphex(idr_pin_val, ==, 1);
+    /*Set digital line to 0; check IDR is set to 0*/
+    gpio_set_irq(gpio_addr, pin_num, 0);
+    idr_pin_val = gpio_readl(gpio_addr, GPIOx_IDR) >> pin_num;
+    g_assert_cmphex(idr_pin_val, ==, 0);
 }
 
 /*static void stm32f2xx_test_pull_up_pull_down(const void *data) {
@@ -144,10 +166,11 @@ static void stm32f2xx_test_gpio_input_mode(const void *data) {
 
 int main(int argc, char **argv) {
     int ret;
+    gpio_pin pin_under_test;
     g_test_init(&argc, &argv, NULL);
     g_test_set_nonfatal_assertions();
     qtest_add_func("stm32f2xx/gpio/stm32f2xx_test_reset_values", stm32f2xx_test_reset_values);
-    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioa", test_data(GPIO_A_ADDR, GPIO_PIN_0), stm32f2xx_test_gpio_input_mode);
+    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioa", test_data(GPIO_B_ADDR, GPIO_PIN_6, &pin_under_test), stm32f2xx_test_gpio_input_mode);
     qtest_start("-machine stm32vldiscovery");
     ret = g_test_run();
     qtest_end();
