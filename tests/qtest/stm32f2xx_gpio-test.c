@@ -43,6 +43,8 @@ meson test qtest-arm/stm32f2xx_gpio-test -> run single meson test for GPIO
 #define GPIO_PIN_14 14
 #define GPIO_PIN_15 15
 
+#define GPIO_NUM_PINS 16
+
 #define RESET_CRL  0x44444444
 #define RESET_CRH  0x44444444
 #define RESET_IDR  0x00000000
@@ -140,10 +142,12 @@ static void stm32f2xx_test_gpio_input_mode(const void *data) {
     gpio_writel(gpio_addr, gpio_crx_reg, (GPIOx_MODE_INPUT | GPIOx_CNF_INPUT) << (pin_num * 4));
     /*Set digital line to 1; check IDR is set to 1*/
     gpio_set_irq(gpio_addr, pin_num, 1);
+    //g_assert_true(get_irq(test_pin->gpio_line * GPIO_NUM_PINS + test_pin->pin_number));
     idr_pin_val = gpio_readl(gpio_addr, GPIOx_IDR) >> pin_num;
     g_assert_cmphex(idr_pin_val, ==, 1);
     /*Set digital line to 0; check IDR is set to 0*/
     gpio_set_irq(gpio_addr, pin_num, 0);
+    //g_assert_false(get_irq(test_pin->gpio_line * GPIO_NUM_PINS + test_pin->pin_number));
     idr_pin_val = gpio_readl(gpio_addr, GPIOx_IDR) >> pin_num;
     g_assert_cmphex(idr_pin_val, ==, 0);
 }
