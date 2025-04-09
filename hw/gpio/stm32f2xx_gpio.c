@@ -5,6 +5,7 @@
 #include "qemu/log.h"
 #include "hw/irq.h"
 #include "migration/vmstate.h"
+#include "trace.h"
 
 static void set_pin_cfg(pinObj *to_set, uint8_t pin_index, uint32_t reg_word) {
     uint8_t mode;
@@ -61,6 +62,7 @@ static void stm32f2xx_gpio_set_irq(STM32F2XXGpioState *gpio_state, int n, int le
     } else {
         qemu_log_mask(LOG_GUEST_ERROR, "Line %d is OPEN-DRAIN: cannot be set to 1\n", n);
     }
+    trace_stm32f2xx_gpio_update_output_irq(n, level);
 }
 
 static void stm32f2xx_gpio_config_pins(STM32F2XXGpioState *gpio_state, int start, int end, uint32_t reg) {
@@ -94,6 +96,7 @@ static void stm32f2xx_gpio_set(void *opaque, int n, int level) {
     } else {
         gpio_state->idr = (level) ? (gpio_state->idr | idr_mask) : (gpio_state->idr &~ idr_mask);
     }
+    trace_stm32f2xx_gpio_update_input_irq(n, level);
 }
 
 static uint64_t stm32f2xx_gpio_read(void *opaque, hwaddr addr, unsigned int size) {

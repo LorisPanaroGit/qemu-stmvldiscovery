@@ -321,6 +321,8 @@ static void test_gpio_input_mode(const void *data)
     unsigned int pin = test_pin(data);
     uint32_t gpio = test_gpio_addr(data);
     unsigned int gpio_id = get_gpio_id(gpio);
+    printf("%u\n", gpio);
+    printf("%u\n", gpio_id);
 
     qtest_irq_intercept_in(global_qtest, SYSCFG);
 

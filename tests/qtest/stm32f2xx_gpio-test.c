@@ -102,6 +102,19 @@ static void gpio_set_irq(unsigned int gpio, int num, int level) {
     qtest_set_irq_in(global_qtest, name, NULL, num, level);
 }
 
+/*static void disconnect_all_pins(unsigned int gpio)
+{
+    g_autofree char *path = g_strdup_printf("/machine/soc/gpio%c",
+                                            get_gpio_id(gpio) + 'a');
+    QDict *r;
+
+    r = qtest_qmp(global_qtest, "{ 'execute': 'qom-set', 'arguments': "
+        "{ 'path': %s, 'property': 'disconnected-pins', 'value': %d } }",
+        path, 0xFFFF);
+    g_assert_false(qdict_haskey(r, "error"));
+    qobject_unref(r);
+}*/
+
 static void stm32f2xx_system_reset(void) {
     QDict *r;
     r = qtest_qmp(global_qtest, "{'execute': 'system_reset'}");
@@ -136,20 +149,32 @@ static void stm32f2xx_test_gpio_input_mode(const void *data) {
     gpio_pin *test_pin = (gpio_pin*)data;
     uint32_t pin_num = test_pin->pin_number;
     uint32_t gpio_addr = test_pin->gpio_line;
+    uint32_t gpio_id = get_gpio_id(test_pin->gpio_line);
     uint32_t gpio_crx_reg = (pin_num >= 8) ? GPIOx_CRH : GPIOx_CRL;
     uint32_t idr_pin_val;
+
+    qtest_irq_intercept_in(global_qtest, SYSCFG);
+    
     /*Set GPIOx[GPIO_PIN_<number>] as INPUT pin -> ideally, the shift works for pin_num < 8 but the offset must be subtracted if pin_num falls into CRH*/
     gpio_writel(gpio_addr, gpio_crx_reg, (GPIOx_MODE_INPUT | GPIOx_CNF_INPUT) << (pin_num * 4));
+
     /*Set digital line to 1; check IDR is set to 1*/
     gpio_set_irq(gpio_addr, pin_num, 1);
-    //g_assert_true(get_irq(test_pin->gpio_line * GPIO_NUM_PINS + test_pin->pin_number));
     idr_pin_val = gpio_readl(gpio_addr, GPIOx_IDR) >> pin_num;
+    printf("GPIO ID: %u\n", gpio_id);
+    printf("Pin: %u\n", pin_num);
+    printf("Level of the line: %u\n", get_irq((gpio_id * GPIO_NUM_PINS) + pin_num));
     g_assert_cmphex(idr_pin_val, ==, 1);
+    g_assert_true(get_irq((gpio_id * GPIO_NUM_PINS) + pin_num));
+    
     /*Set digital line to 0; check IDR is set to 0*/
     gpio_set_irq(gpio_addr, pin_num, 0);
-    //g_assert_false(get_irq(test_pin->gpio_line * GPIO_NUM_PINS + test_pin->pin_number));
+    g_assert_false(get_irq((gpio_id * GPIO_NUM_PINS) + pin_num));
     idr_pin_val = gpio_readl(gpio_addr, GPIOx_IDR) >> pin_num;
     g_assert_cmphex(idr_pin_val, ==, 0);
+
+    /*Clean the test*/
+    //disconnect_all_pins(gpio_addr);
 }
 
 /*static void stm32f2xx_test_pull_up_pull_down(const void *data) {
@@ -174,7 +199,7 @@ int main(int argc, char **argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_set_nonfatal_assertions();
     qtest_add_func("stm32f2xx/gpio/stm32f2xx_test_reset_values", stm32f2xx_test_reset_values);
-    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioa", test_data(GPIO_B_ADDR, GPIO_PIN_6, &pin_under_test), stm32f2xx_test_gpio_input_mode);
+    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioa", test_data(GPIO_A_ADDR, GPIO_PIN_1, &pin_under_test), stm32f2xx_test_gpio_input_mode);
     qtest_start("-machine stm32vldiscovery");
     ret = g_test_run();
     qtest_end();
