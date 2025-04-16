@@ -25,13 +25,13 @@
 
 #include "qemu/osdep.h"
 #include "qemu/lockable.h"
-#include "sysemu/tcg.h"
-#include "sysemu/replay.h"
-#include "sysemu/cpu-timers.h"
+#include "system/tcg.h"
+#include "system/replay.h"
+#include "system/cpu-timers.h"
 #include "qemu/main-loop.h"
 #include "qemu/notify.h"
 #include "qemu/guest-random.h"
-#include "exec/exec-all.h"
+#include "exec/cpu-common.h"
 #include "tcg/startup.h"
 #include "tcg-accel-ops.h"
 #include "tcg-accel-ops-rr.h"
@@ -302,9 +302,7 @@ static void *rr_cpu_thread_fn(void *arg)
         rr_deal_with_unplugged_cpus();
     }
 
-    rcu_remove_force_rcu_notifier(&force_rcu);
-    rcu_unregister_thread();
-    return NULL;
+    g_assert_not_reached();
 }
 
 void rr_start_vcpu_thread(CPUState *cpu)

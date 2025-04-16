@@ -689,7 +689,6 @@ static void gt64120_writel(void *opaque, hwaddr addr,
     case GT_PCI0_CFGDATA:
         /* Mapped via in gt64120_pci_mapping() */
         g_assert_not_reached();
-        break;
 
     /* Interrupts */
     case GT_INTRCAUSE:
@@ -933,7 +932,6 @@ static uint64_t gt64120_readl(void *opaque,
     case GT_PCI0_CFGDATA:
         /* Mapped via in gt64120_pci_mapping() */
         g_assert_not_reached();
-        break;
 
     case GT_PCI0_CMD:
     case GT_PCI0_TOR:
@@ -1276,10 +1274,9 @@ static const TypeInfo gt64120_pci_info = {
     },
 };
 
-static Property gt64120_properties[] = {
+static const Property gt64120_properties[] = {
     DEFINE_PROP_BOOL("cpu-little-endian", GT64120State,
                      cpu_little_endian, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void gt64120_class_init(ObjectClass *klass, void *data)
@@ -1289,7 +1286,7 @@ static void gt64120_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     device_class_set_props(dc, gt64120_properties);
     dc->realize = gt64120_realize;
-    dc->reset = gt64120_reset;
+    device_class_set_legacy_reset(dc, gt64120_reset);
     dc->vmsd = &vmstate_gt64120;
 }
 
