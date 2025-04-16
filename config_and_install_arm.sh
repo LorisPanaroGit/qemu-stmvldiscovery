@@ -20,6 +20,4 @@ cd build_arm
 
 echo "Building filesystem..."
 make -j14
-echo "Installing qemu-system-arm..."
-sudo make install
 cd ..
