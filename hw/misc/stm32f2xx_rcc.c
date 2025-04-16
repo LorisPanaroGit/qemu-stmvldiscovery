@@ -128,7 +128,7 @@ static void stm32f2xx_rcc_init(Object *obj) {
 static void stm32f2xx_rcc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    dc->reset = stm32f2xx_rcc_reset;
+    device_class_set_legacy_reset(dc, stm32f2xx_rcc_reset);
 }
 
 static const TypeInfo stm32f2xx_rcc_info = {

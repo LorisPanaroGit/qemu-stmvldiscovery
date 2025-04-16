@@ -53,7 +53,7 @@ static void SPISLAVEState_class_init(ObjectClass *klass, void *data) {
     DeviceClass *dc = DEVICE_CLASS(klass);
     k->realize = SPISLAVEState_realize;
     k->transfer = SPISLAVEState_transfer;
-    dc->reset = SPISLAVEState_reset;
+    device_class_set_legacy_reset(dc, SPISLAVEState_reset);
     dc->vmsd = &vmstate_spi_slave;
 }
 
