@@ -32,7 +32,7 @@ run_configure_script() {
 }
 
 build_arm_code() {
-    if [ ! -d ${BUILD_DIR}] || [ -z "$(ls -A ${BUILD_DIR} 2>/dev/null)"]; then
+    if [ ! -d ${BUILD_DIR} ] || [ -z "$(ls -A ${BUILD_DIR} 2>/dev/null)" ]; then
         echo "${BUILD_DIR} not present or empty. Run configure script first..."
     else 
         echo "Building filesystem..."

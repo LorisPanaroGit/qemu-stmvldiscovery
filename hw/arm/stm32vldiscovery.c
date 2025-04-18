@@ -33,31 +33,38 @@
 #include "hw/arm/boot.h"
 
 /* stm32vldiscovery implementation is derived from netduinoplus2 */
+#define TYPE_STM32VLDISCOVERY "stm32vldiscovery"
+OBJECT_DECLARE_SIMPLE_TYPE(STM32VLDISCOVERYState, STM32VLDISCOVERY)
 
+typedef struct STM32VLDISCOVERYState {
+    MachineState parent_obj;
+    STM32F100State soc;
+} STM32VLDISCOVERYState;
 /* Main SYSCLK frequency in Hz (24MHz) */
 #define SYSCLK_FRQ 24000000ULL
 
 static void stm32vldiscovery_init(MachineState *machine)
 {
-    DeviceState *dev;
+    STM32VLDISCOVERYState *s = STM32VLDISCOVERY(machine);
+    DeviceState *dev = DEVICE(&s->soc);
     Clock *sysclk;
 
     /* This clock doesn't need migration because it is fixed-frequency */
     sysclk = clock_new(OBJECT(machine), "SYSCLK");
     clock_set_hz(sysclk, SYSCLK_FRQ);
 
-    dev = qdev_new(TYPE_STM32F100_SOC);
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(dev));
+    object_initialize_child(OBJECT(machine), "soc", &s->soc, TYPE_STM32F100_SOC);
     qdev_connect_clock_in(dev, "sysclk", sysclk);
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+    sysbus_realize(SYS_BUS_DEVICE(&s->soc), &error_fatal);
 
-    armv7m_load_kernel(STM32F100_SOC(dev)->armv7m.cpu,
+    armv7m_load_kernel(s->soc.armv7m.cpu,
                        machine->kernel_filename,
                        0, FLASH_SIZE);
 }
 
-static void stm32vldiscovery_machine_init(MachineClass *mc)
+static void stm32vldiscovery_machine_init(ObjectClass *oc, void *data)
 {
+    MachineClass *mc = MACHINE_CLASS(oc);
     static const char * const valid_cpu_types[] = {
         ARM_CPU_TYPE_NAME("cortex-m3"),
         NULL
@@ -68,4 +75,14 @@ static void stm32vldiscovery_machine_init(MachineClass *mc)
     mc->valid_cpu_types = valid_cpu_types;
 }
 
-DEFINE_MACHINE("stm32vldiscovery", stm32vldiscovery_machine_init)
+static const TypeInfo stm32vldiscovery_machine_type[] = {
+    {
+        .name           = TYPE_STM32VLDISCOVERY,
+        .parent         = TYPE_MACHINE,
+        .instance_size  = sizeof(STM32VLDISCOVERYState),
+        .class_init     = stm32vldiscovery_machine_init,
+    }
+};
+
+
+DEFINE_TYPES(stm32vldiscovery_machine_type)
