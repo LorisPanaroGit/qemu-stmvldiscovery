@@ -168,6 +168,7 @@ static void stm32f2xx_test_input_mode_gpio(const void* data) {
     g_autofree char* gpio_group_path = g_strdup_printf("/machine/soc/GPIO%c", gpio_group + 'A');
     qtest_irq_intercept_in(global_qtest, gpio_group_path);
 
+    
     /*Get CRH or CRL register according to pin number*/
     crx_reg = (pin_number >= (GPIO_NUM_PINS / 2)) ? GPIOx_CRH : GPIOx_CRL;
     crx_pin_pos = (crx_reg == GPIOx_CRH) ? pin_number - (GPIO_NUM_PINS/2) : pin_number;
