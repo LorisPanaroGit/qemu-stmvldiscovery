@@ -48,7 +48,7 @@ static void SPISLAVEState_reset(DeviceState *dev) {
     s->val = 0;
 }
 
-static void SPISLAVEState_class_init(ObjectClass *klass, void *data) {
+static void SPISLAVEState_class_init(ObjectClass *klass, const void *data) {
     SSIPeripheralClass *k = SSI_PERIPHERAL_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
     k->realize = SPISLAVEState_realize;

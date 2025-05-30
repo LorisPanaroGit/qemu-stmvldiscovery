@@ -125,7 +125,7 @@ static void stm32f2xx_rcc_init(Object *obj) {
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &rcc_state->mmio);
 }
 
-static void stm32f2xx_rcc_class_init(ObjectClass *klass, void *data)
+static void stm32f2xx_rcc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     device_class_set_legacy_reset(dc, stm32f2xx_rcc_reset);

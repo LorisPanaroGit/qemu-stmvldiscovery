@@ -218,7 +218,7 @@ static void stm32f2xx_gpio_init(Object *obj) {
     qdev_init_gpio_out(dev, gpio_state->irq, GPIOx_NUM_PINS);
 }
 
-static void stm32f2xx_gpio_class_init(ObjectClass *klass, void *data) {
+static void stm32f2xx_gpio_class_init(ObjectClass *klass, const void *data) {
     DeviceClass *dc = DEVICE_CLASS(klass);
     device_class_set_legacy_reset(dc, stm32f2xx_gpio_reset);
     dc->vmsd = &vmstate_stm32f2xx_gpio;
