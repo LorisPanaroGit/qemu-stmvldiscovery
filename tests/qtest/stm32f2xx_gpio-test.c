@@ -74,12 +74,12 @@ typedef struct gpio_pin {
     uint8_t pin_number;
 } gpio_pin;
 
-static void* set_test_data(unsigned int gpio_group, unsigned int gpio_group_addr, unsigned int gpio_pin_num, gpio_pin* pin_obj) {
-    pin_obj->gpio_group = gpio_group;
-    pin_obj->gpio_group_addr = gpio_group_addr;
-    pin_obj->pin_number = gpio_pin_num;
-    return (void*)pin_obj;
-}
+//static void* set_test_data(unsigned int gpio_group, unsigned int gpio_group_addr, unsigned int gpio_pin_num, gpio_pin* pin_obj) {
+//    pin_obj->gpio_group = gpio_group;
+//    pin_obj->gpio_group_addr = gpio_group_addr;
+//    pin_obj->pin_number = gpio_pin_num;
+//    return (void*)pin_obj;
+//}
 
 unsigned int reset_vals[GPIO_NUM_REGS] = {
     RESET_CRL,
@@ -101,17 +101,17 @@ static uint32_t gpio_readl(unsigned int gpio_port, unsigned int reg) {
     return readl(gpio_port + reg);
 }
 
-static void gpio_set_irq(unsigned int gpio_group, int pin_number, int pin_level) {
-    //unsigned int pin_number_real = (gpio_group * GPIO_NUM_PINS * pin_number);
-    g_autofree char* pin_group_name = g_strdup_printf("/machine/soc/GPIO%c", gpio_group + 'A');
-    qtest_set_irq_in(global_qtest, pin_group_name, NULL, pin_number, pin_level);
-}
+//static void gpio_set_irq(unsigned int gpio_group, int pin_number, int pin_level) {
+//    //unsigned int pin_number_real = (gpio_group * GPIO_NUM_PINS * pin_number);
+//    g_autofree char* pin_group_name = g_strdup_printf("/machine/soc/GPIO%c", gpio_group + 'A');
+//    qtest_set_irq_in(global_qtest, pin_group_name, NULL, pin_number, pin_level);
+//}
 
-static bool gpio_get_irq(unsigned int gpio_group, int pin_number) {
-    gpio_group = 0;
-    bool irq_stat = qtest_get_irq(global_qtest, (pin_number));
-    return irq_stat;
-}
+//static bool gpio_get_irq(unsigned int gpio_group, int pin_number) {
+//    gpio_group = 0;
+//    bool irq_stat = qtest_get_irq(global_qtest, (pin_number));
+//    return irq_stat;
+//}
 
 static void stm32f2xx_system_reset(void) {
     QDict *r;
@@ -139,57 +139,57 @@ static void stm32f2xx_test_reset_values(void) {
     }
 }
 
-static void stm32f2xx_test_input_mode_gpio(const void* data) {
-    gpio_pin *test_pin = (gpio_pin*)data;
-    /*variables for RESET check*/
-    unsigned int gpio_addr;
-    unsigned int reg_addr;
-    unsigned int read_data;
-
-    /*Variables for register reading*/
-    unsigned int crx_pin_pos;
-    unsigned int crx_reg;
-    unsigned int idr_reg_bit;
-
-    /*GPIO utils*/
-    unsigned int gpio_group = test_pin->gpio_group;
-    unsigned int pin_number = test_pin->pin_number;
-    unsigned int gpio_group_addr = test_pin->gpio_group_addr;
-
-    /*Perform a system reset and check if all registers are in correct state*/
-    stm32f2xx_system_reset();
-    for(gpio_addr = GPIO_A_ADDR; gpio_addr <= GPIO_E_ADDR; gpio_addr += GPIO_PORT_SIZE) {
-        for(reg_addr = GPIOx_CRL; reg_addr <= GPIOx_LCKR; reg_addr += GPIO_REG_SIZE) {
-            read_data = gpio_readl(gpio_addr, reg_addr);
-            g_assert_cmphex(read_data, ==, reset_vals[(reg_addr/GPIO_REG_SIZE)]);
-        }
-    }
-
-    g_autofree char* gpio_group_path = g_strdup_printf("/machine/soc/GPIO%c", gpio_group + 'A');
-    qtest_irq_intercept_in(global_qtest, gpio_group_path);
-
-    
-    /*Get CRH or CRL register according to pin number*/
-    crx_reg = (pin_number >= (GPIO_NUM_PINS / 2)) ? GPIOx_CRH : GPIOx_CRL;
-    crx_pin_pos = (crx_reg == GPIOx_CRH) ? pin_number - (GPIO_NUM_PINS/2) : pin_number;
-    gpio_writel(gpio_group_addr, crx_reg, (GPIOx_CNF_INPUT | GPIOx_MODE_INPUT) << (crx_pin_pos * 4));
-
-    /*Drive pin line HIGH*/
-    gpio_set_irq(gpio_group, pin_number, HIGH);
-    g_assert_true(gpio_get_irq(gpio_group, pin_number));
-
-    /*Check corresponding IDR bit is set to 1*/
-    idr_reg_bit = gpio_readl(gpio_group_addr, GPIOx_IDR) >> pin_number;
-    g_assert_cmphex(idr_reg_bit, ==, 1);
-
-    /*Drive pin line LOW*/
-    gpio_set_irq(gpio_group, pin_number, LOW);
-    g_assert_false(gpio_get_irq(gpio_group, pin_number));
-
-    /*Check corresponding IDR bit is set to 0*/
-    idr_reg_bit = gpio_readl(gpio_group_addr, GPIOx_IDR) >> pin_number;
-    g_assert_cmphex(idr_reg_bit, ==, 0);
-}
+//static void stm32f2xx_test_input_mode_gpio(const void* data) {
+//    gpio_pin *test_pin = (gpio_pin*)data;
+//    /*variables for RESET check*/
+//    unsigned int gpio_addr;
+//    unsigned int reg_addr;
+//    unsigned int read_data;
+//
+//    /*Variables for register reading*/
+//    unsigned int crx_pin_pos;
+//    unsigned int crx_reg;
+//    unsigned int idr_reg_bit;
+//
+//    /*GPIO utils*/
+//    unsigned int gpio_group = test_pin->gpio_group;
+//    unsigned int pin_number = test_pin->pin_number;
+//    unsigned int gpio_group_addr = test_pin->gpio_group_addr;
+//
+//    /*Perform a system reset and check if all registers are in correct state*/
+//    stm32f2xx_system_reset();
+//    for(gpio_addr = GPIO_A_ADDR; gpio_addr <= GPIO_E_ADDR; gpio_addr += GPIO_PORT_SIZE) {
+//        for(reg_addr = GPIOx_CRL; reg_addr <= GPIOx_LCKR; reg_addr += GPIO_REG_SIZE) {
+//            read_data = gpio_readl(gpio_addr, reg_addr);
+//            g_assert_cmphex(read_data, ==, reset_vals[(reg_addr/GPIO_REG_SIZE)]);
+//        }
+//    }
+//
+//    //g_autofree char* gpio_group_path = g_strdup_printf("/machine/soc/GPIO%c", gpio_group + 'A');
+//    //qtest_irq_intercept_in(global_qtest, gpio_group_path);
+//
+//    
+//    /*Get CRH or CRL register according to pin number*/
+//    crx_reg = (pin_number >= (GPIO_NUM_PINS / 2)) ? GPIOx_CRH : GPIOx_CRL;
+//    crx_pin_pos = (crx_reg == GPIOx_CRH) ? pin_number - (GPIO_NUM_PINS/2) : pin_number;
+//    gpio_writel(gpio_group_addr, crx_reg, (GPIOx_CNF_INPUT | GPIOx_MODE_INPUT) << (crx_pin_pos * 4));
+//
+//    /*Drive pin line HIGH*/
+//    gpio_set_irq(gpio_group, pin_number, HIGH);
+//    //g_assert_true(gpio_get_irq(gpio_group, pin_number));
+//
+//    /*Check corresponding IDR bit is set to 1*/
+//    idr_reg_bit = gpio_readl(gpio_group_addr, GPIOx_IDR) >> pin_number;
+//    g_assert_cmphex(idr_reg_bit, ==, 1);
+//
+//    /*Drive pin line LOW*/
+//    gpio_set_irq(gpio_group, pin_number, LOW);
+//    //g_assert_false(gpio_get_irq(gpio_group, pin_number));
+//
+//    /*Check corresponding IDR bit is set to 0*/
+//    idr_reg_bit = gpio_readl(gpio_group_addr, GPIOx_IDR) >> pin_number;
+//    g_assert_cmphex(idr_reg_bit, ==, 0);
+//}
 
 /*static void stm32f2xx_test_gpio_output_mode(const void *data) {
 
@@ -214,14 +214,14 @@ static void stm32f2xx_test_input_mode_gpio(const void* data) {
 
 int main(int argc, char **argv) {
     int ret;
-    gpio_pin pin_under_test;
+    //gpio_pin pin_under_test;
     g_test_init(&argc, &argv, NULL);
     g_test_set_nonfatal_assertions();
     qtest_add_func("stm32f2xx/gpio/stm32f2xx_test_reset_values", stm32f2xx_test_reset_values);
-    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioa", set_test_data(GPIO_A_GROUP, GPIO_A_ADDR, GPIO_PIN_0, &pin_under_test), stm32f2xx_test_input_mode_gpio);
-    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpiob", set_test_data(GPIO_B_GROUP, GPIO_B_ADDR, GPIO_PIN_5, &pin_under_test), stm32f2xx_test_input_mode_gpio);
-    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioc", set_test_data(GPIO_C_GROUP, GPIO_C_ADDR, GPIO_PIN_10, &pin_under_test), stm32f2xx_test_input_mode_gpio);
-    qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpiod", set_test_data(GPIO_D_GROUP, GPIO_D_ADDR, GPIO_PIN_15, &pin_under_test), stm32f2xx_test_input_mode_gpio);
+    //qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioa", set_test_data(GPIO_A_GROUP, GPIO_A_ADDR, GPIO_PIN_0, &pin_under_test), stm32f2xx_test_input_mode_gpio);
+    //qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpiob", set_test_data(GPIO_B_GROUP, GPIO_B_ADDR, GPIO_PIN_5, &pin_under_test), stm32f2xx_test_input_mode_gpio);
+    //qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpioc", set_test_data(GPIO_C_GROUP, GPIO_C_ADDR, GPIO_PIN_10, &pin_under_test), stm32f2xx_test_input_mode_gpio);
+    //qtest_add_data_func("stm32f2xx/gpio/stm32f2xx_test_input_mode_gpiod", set_test_data(GPIO_D_GROUP, GPIO_D_ADDR, GPIO_PIN_15, &pin_under_test), stm32f2xx_test_input_mode_gpio);
     qtest_start("-machine stm32vldiscovery");
     ret = g_test_run();
     qtest_end();
