@@ -27,7 +27,7 @@
 #include "qemu/lockable.h"
 #include "system/tcg.h"
 #include "system/replay.h"
-#include "system/cpu-timers.h"
+#include "exec/icount.h"
 #include "qemu/main-loop.h"
 #include "qemu/notify.h"
 #include "qemu/guest-random.h"
@@ -301,6 +301,8 @@ static void *rr_cpu_thread_fn(void *arg)
         rr_wait_io_event();
         rr_deal_with_unplugged_cpus();
     }
+
+    rcu_unregister_thread();
 
     g_assert_not_reached();
 }
