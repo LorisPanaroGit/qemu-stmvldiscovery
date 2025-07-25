@@ -503,8 +503,12 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
          * Linux v4.17-v4.20 incorrectly return ARCH_CAPABILITIES on SVM hosts.
          * We can detect the bug by checking if MSR_IA32_ARCH_CAPABILITIES is
          * returned by KVM_GET_MSR_INDEX_LIST.
+         *
+         * But also, because Windows does not like ARCH_CAPABILITIES on AMD
+         * mcahines at all, do not show the fake ARCH_CAPABILITIES MSR that
+         * KVM sets up.
          */
-        if (!has_msr_arch_capabs) {
+        if (!has_msr_arch_capabs || !(edx & CPUID_7_0_EDX_ARCH_CAPABILITIES)) {
             ret &= ~CPUID_7_0_EDX_ARCH_CAPABILITIES;
         }
     } else if (function == 7 && index == 1 && reg == R_EAX) {
@@ -2259,7 +2263,7 @@ int kvm_arch_init_vcpu(CPUState *cs)
     cpuid_i = kvm_x86_build_cpuid(env, cpuid_data.entries, cpuid_i);
     cpuid_data.cpuid.nent = cpuid_i;
 
-    if (((env->cpuid_version >> 8)&0xF) >= 6
+    if (x86_cpu_family(env->cpuid_version) >= 6
         && (env->features[FEAT_1_EDX] & (CPUID_MCE | CPUID_MCA)) ==
            (CPUID_MCE | CPUID_MCA)) {
         uint64_t mcg_cap, unsupported_caps;
@@ -6181,6 +6185,9 @@ int kvm_arch_handle_exit(CPUState *cs, struct kvm_run *run)
             break;
         case TDVMCALL_GET_TD_VM_CALL_INFO:
             tdx_handle_get_tdvmcall_info(cpu, run);
+            break;
+        case TDVMCALL_SETUP_EVENT_NOTIFY_INTERRUPT:
+            tdx_handle_setup_event_notify_interrupt(cpu, run);
             break;
         }
         ret = 0;
