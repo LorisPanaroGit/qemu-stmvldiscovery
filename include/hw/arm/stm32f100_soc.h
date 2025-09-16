@@ -22,40 +22,45 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_ARM_STM32F100_SOC_H
-#define HW_ARM_STM32F100_SOC_H
-
-#include "hw/char/stm32f2xx_usart.h"
-#include "hw/ssi/stm32f2xx_spi.h"
-#include "hw/arm/armv7m.h"
-#include "qom/object.h"
-#include "hw/clock.h"
-
-#define TYPE_STM32F100_SOC "stm32f100-soc"
-OBJECT_DECLARE_SIMPLE_TYPE(STM32F100State, STM32F100_SOC)
-
-#define STM_NUM_USARTS 3
-#define STM_NUM_SPIS 2
-
-#define FLASH_BASE_ADDRESS 0x08000000
-#define FLASH_SIZE (128 * 1024)
-#define SRAM_BASE_ADDRESS 0x20000000
-#define SRAM_SIZE (8 * 1024)
-
-struct STM32F100State {
-    SysBusDevice parent_obj;
-
-    ARMv7MState armv7m;
-
-    STM32F2XXUsartState usart[STM_NUM_USARTS];
-    STM32F2XXSPIState spi[STM_NUM_SPIS];
-
-    MemoryRegion sram;
-    MemoryRegion flash;
-    MemoryRegion flash_alias;
-
-    Clock *sysclk;
-    Clock *refclk;
-};
-
-#endif
+ #ifndef HW_ARM_STM32F100_SOC_H
+ #define HW_ARM_STM32F100_SOC_H
+ 
+ #include "hw/char/stm32f2xx_usart.h"
+ #include "hw/ssi/stm32f2xx_spi.h"
+ #include "hw/misc/stm32_rcc.h"
+ #include "hw/gpio/stm32f2xx_gpio.h"
+ #include "hw/arm/armv7m.h"
+ #include "qom/object.h"
+ #include "hw/clock.h"
+ 
+ #define TYPE_STM32F100_SOC "stm32f100-soc"
+ OBJECT_DECLARE_SIMPLE_TYPE(STM32F100State, STM32F100_SOC)
+ 
+ #define STM_NUM_USARTS 3
+ #define STM_NUM_SPIS 2
+ #define STM_NUM_GPIOS 5
+ 
+ #define FLASH_BASE_ADDRESS 0x08000000
+ #define FLASH_SIZE (128 * 1024)
+ #define SRAM_BASE_ADDRESS 0x20000000
+ #define SRAM_SIZE (8 * 1024)
+ 
+ struct STM32F100State {
+     SysBusDevice parent_obj;
+ 
+     ARMv7MState armv7m;
+ 
+     STM32F2XXUsartState usart[STM_NUM_USARTS];
+     STM32F2XXSPIState spi[STM_NUM_SPIS];
+     STM32F2XXGpioState gpio[STM_NUM_GPIOS];
+     STM32RccState rcc;
+ 
+     MemoryRegion sram;
+     MemoryRegion flash;
+     MemoryRegion flash_alias;
+ 
+     Clock *sysclk;
+     Clock *refclk;
+ };
+ 
+ #endif
