@@ -28,7 +28,7 @@ DEF("machine", HAS_ARG, QEMU_OPTION_machine, \
     "-machine [type=]name[,prop[=value][,...]]\n"
     "                selects emulated machine ('-machine help' for list)\n"
     "                property accel=accel1[:accel2[:...]] selects accelerator\n"
-    "                supported accelerators are kvm, xen, hvf, nvmm, whpx or tcg (default: tcg)\n"
+    "                supported accelerators are kvm, xen, hvf, nvmm, whpx, mshv or tcg (default: tcg)\n"
     "                vmport=on|off|auto controls emulation of vmport (default: auto)\n"
     "                dump-guest-core=on|off include guest memory in a core dump (default=on)\n"
     "                mem-merge=on|off controls memory merge support (default: on)\n"
@@ -36,7 +36,7 @@ DEF("machine", HAS_ARG, QEMU_OPTION_machine, \
     "                dea-key-wrap=on|off controls support for DEA key wrapping (default=on)\n"
     "                suppress-vmdesc=on|off disables self-describing migration (default=off)\n"
     "                nvdimm=on|off controls NVDIMM support (default=off)\n"
-    "                memory-encryption=@var{} memory encryption object to use (default=none)\n"
+    "                memory-encryption=<id> memory encryption object to use (default=none)\n"
     "                hmat=on|off controls ACPI HMAT support (default=off)\n"
     "                spcr=on|off controls ACPI SPCR support (default=on)\n"
 #ifdef CONFIG_POSIX
@@ -44,6 +44,7 @@ DEF("machine", HAS_ARG, QEMU_OPTION_machine, \
 #endif
     "                memory-backend='backend-id' specifies explicitly provided backend for main RAM (default=none)\n"
     "                cxl-fmw.0.targets.0=firsttarget,cxl-fmw.0.targets.1=secondtarget,cxl-fmw.0.size=size[,cxl-fmw.0.interleave-granularity=granularity]\n"
+    "                sgx-epc.0.memdev=memid,sgx-epc.0.node=numaid\n"
     "                smp-cache.0.cache=cachename,smp-cache.0.topology=topologylevel\n",
     QEMU_ARCH_ALL)
 SRST
@@ -66,10 +67,10 @@ SRST
 
     ``accel=accels1[:accels2[:...]]``
         This is used to enable an accelerator. Depending on the target
-        architecture, kvm, xen, hvf, nvmm, whpx or tcg can be available.
-        By default, tcg is used. If there is more than one accelerator
-        specified, the next one is used if the previous one fails to
-        initialize.
+        architecture, kvm, xen, hvf, nvmm, whpx, mshv or tcg can be
+        available. By default, tcg is used. If there is more than one
+        accelerator specified, the next one is used if the previous one
+        fails to initialize.
 
     ``vmport=on|off|auto``
         Enables emulation of VMWare IO port, for vmmouse etc. auto says
@@ -99,7 +100,7 @@ SRST
     ``nvdimm=on|off``
         Enables or disables NVDIMM support. The default is off.
 
-    ``memory-encryption=``
+    ``memory-encryption=<id>``
         Memory encryption object to use. The default is none.
 
     ``hmat=on|off``
@@ -179,6 +180,9 @@ SRST
 
             -machine cxl-fmw.0.targets.0=cxl.0,cxl-fmw.0.targets.1=cxl.1,cxl-fmw.0.size=128G,cxl-fmw.0.interleave-granularity=512
 
+    ``sgx-epc.0.memdev=<memid>,sgx-epc.0.node=<numaid>``
+        Define an SGX EPC section.
+
     ``smp-cache.0.cache=cachename,smp-cache.0.topology=topologylevel``
         Define cache properties for SMP system.
 
@@ -208,12 +212,10 @@ SRST
 ERST
 
 DEF("M", HAS_ARG, QEMU_OPTION_M,
-    "                sgx-epc.0.memdev=memid,sgx-epc.0.node=numaid\n",
-    QEMU_ARCH_ALL)
-
+    "-M              as -machine\n", QEMU_ARCH_ALL)
 SRST
-``sgx-epc.0.memdev=@var{memid},sgx-epc.0.node=@var{numaid}``
-    Define an SGX EPC section.
+``-M``
+    as -machine.
 ERST
 
 DEF("cpu", HAS_ARG, QEMU_OPTION_cpu,
@@ -226,7 +228,7 @@ ERST
 
 DEF("accel", HAS_ARG, QEMU_OPTION_accel,
     "-accel [accel=]accelerator[,prop[=value][,...]]\n"
-    "                select accelerator (kvm, xen, hvf, nvmm, whpx or tcg; use 'help' for a list)\n"
+    "                select accelerator (kvm, xen, hvf, nvmm, whpx, mshv or tcg; use 'help' for a list)\n"
     "                igd-passthru=on|off (enable Xen integrated Intel graphics passthrough, default=off)\n"
     "                kernel-irqchip=on|off|split controls accelerated irqchip support (default=on)\n"
     "                kvm-shadow-mem=size of KVM shadow MMU in bytes\n"
@@ -241,8 +243,8 @@ DEF("accel", HAS_ARG, QEMU_OPTION_accel,
 SRST
 ``-accel name[,prop=value[,...]]``
     This is used to enable an accelerator. Depending on the target
-    architecture, kvm, xen, hvf, nvmm, whpx or tcg can be available. By
-    default, tcg is used. If there is more than one accelerator
+    architecture, kvm, xen, hvf, nvmm, whpx, mshv or tcg can be available.
+    By default, tcg is used. If there is more than one accelerator
     specified, the next one is used if the previous one fails to
     initialize.
 
@@ -303,9 +305,9 @@ SRST
         with break-before-make sequences are considerable and also if guest
         workloads are read intensive. The size here specifies how many pages
         to break at a time and needs to be a valid block size which is
-        1GB/2MB/4KB, 32MB/16KB and 512MB/64KB for 4KB/16KB/64KB PAGE_SIZE
-        respectively. Be wary of specifying a higher size as it will have an
-        impact on the memory. By default, this feature is disabled
+        1GiB/2MiB/4KiB, 32MiB/16KiB and 512MiB/64KiB for 4KiB/16KiB/64KiB
+        PAGE_SIZE respectively. Be wary of specifying a higher size as it will
+        have an impact on the memory. By default, this feature is disabled
         (eager-split-size=0).
 
     ``notify-vmexit=run|internal-error|disable,notify-window=n``
@@ -562,7 +564,7 @@ SRST
 
     lat is latency value in nanoseconds. bw is bandwidth value, the
     possible value and units are NUM[M\|G\|T], mean that the bandwidth
-    value are NUM byte per second (or MB/s, GB/s or TB/s depending on
+    value are NUM byte per second (or MiB/s, GiB/s or TiB/s depending on
     used suffix). Note that if latency or bandwidth value is 0, means
     the corresponding latency or bandwidth information is not provided.
 
@@ -577,10 +579,10 @@ SRST
     For example, the following options describe 2 NUMA nodes. Node 0 has
     2 cpus and a ram, node 1 has only a ram. The processors in node 0
     access memory in node 0 with access-latency 5 nanoseconds,
-    access-bandwidth is 200 MB/s; The processors in NUMA node 0 access
+    access-bandwidth is 200 MiB/s; The processors in NUMA node 0 access
     memory in NUMA node 1 with access-latency 10 nanoseconds,
-    access-bandwidth is 100 MB/s. And for memory side cache information,
-    NUMA node 0 and 1 both have 1 level memory cache, size is 10KB,
+    access-bandwidth is 100 MiB/s. And for memory side cache information,
+    NUMA node 0 and 1 both have 1 level memory cache, size is 10KiB,
     policy is write-back, the cache Line size is 8 bytes:
 
     ::
@@ -737,8 +739,8 @@ SRST
     amount of memory. Note that maxmem must be aligned to the page size.
 
     For example, the following command-line sets the guest startup RAM
-    size to 1GB, creates 3 slots to hotplug additional memory and sets
-    the maximum memory the guest can reach to 4GB:
+    size to 1GiB, creates 3 slots to hotplug additional memory and sets
+    the maximum memory the guest can reach to 4GiB:
 
     .. parsed-literal::
 
@@ -1142,6 +1144,32 @@ SRST
         is set, get "Get GUID" command to the BMC will return it.
         Otherwise "Get GUID" will return an error.
 
+    ``lan.channel=val``
+        channel number of the fake LAN channel. It can be 0 or any
+        integer from 0x1 to 0xb inclusive. If set to 0, the LAN channel
+        is disabled, otherwise the LAN channel is enabled at the
+        specified channel number. The default is 0.
+
+    ``lan.ipaddr=addr``
+        the ipv4 address of the BMC LAN channel.
+
+    ``lan.ipsrc=val``
+        the ipv4 address source of the BMC LAN channel. It can be 0
+        (unspecified source), 1 (static address), 2 (DHCP), 3 (BIOS or
+        system software), or 4 (other source). The default is 0.
+
+    ``lan.macaddr=mac``
+        the mac address of the BMC LAN channel.
+
+    ``lan.netmask=mask``
+        the ipv4 subnet mask for the BMC LAN channel.
+
+    ``lan.defgw_ipaddr=addr``
+        the default gateway ipv4 address for the BMC LAN channel.
+
+    ``lan.defgw_macaddr=mac``
+        the default gateway mac address for the BMC LAN channel.
+
 ``-device ipmi-bmc-extern,id=id,chardev=id[,slave_addr=val]``
     Add a connection to an external IPMI BMC simulator. Instead of
     locally emulating the BMC like the above item, instead connect to an
@@ -1230,6 +1258,36 @@ SRST
 
     ``aw-bits=val`` (val between 32 and 64, default depends on machine)
         This decides the address width of the IOVA address space.
+
+``-device arm-smmuv3,primary-bus=id``
+    This is only supported by ``-machine virt`` (ARM).
+
+    ``primary-bus=id``
+        Accepts either the default root complex (pcie.0) or a
+        pxb-pcie based root complex.
+
+``-device amd-iommu[,option=...]``
+    Enables emulation of an AMD-Vi I/O Memory Management Unit (IOMMU).
+    Only available with ``-machine q35``, it supports the following options:
+
+    ``dma-remap=on|off`` (default: off)
+        Support for DMA address translation and access permission checking for
+        guests attaching passthrough devices to paging domains, using the AMD v1
+        I/O Page Table format. This enables ``-device vfio-pci,...`` to work
+        correctly with a guest using the DMA remapping feature of the vIOMMU.
+
+    ``intremap=on|off`` (default: auto)
+        Generic x86 IOMMU functionality implemented by ``amd-iommu`` device.
+        Enables interrupt remapping feature in guests, which is also required to
+        enable x2apic support.
+        Currently only available with ``kernel-irqchip=off|split``, it is
+        automatically enabled when either of those modes is in use, and disabled
+        with ``kernel-irqchip=on``.
+
+    ``xtsup=on|off`` (default: off)
+        Interrupt remapping table supports x2apic mode, enabling the use of
+        128-bit IRTE format with 32-bit destination field by the guest. Required
+        to support routing interrupts to vCPUs with APIC IDs larger than 0xff.
 
 ERST
 
@@ -1664,7 +1722,7 @@ SRST
         Specify bandwidth throttling limits in bytes per second, either
         for all request types or for reads or writes only. Small values
         can lead to timeouts or hangs inside the guest. A safe minimum
-        for disks is 2 MB/s.
+        for disks is 2 MiB/s.
 
     ``bps_max=bm,bps_rd_max=rm,bps_wr_max=wm``
         Specify bursts in bytes per second, either for all request types
@@ -2693,7 +2751,7 @@ DEF("smbios", HAS_ARG, QEMU_OPTION_smbios,
     "-smbios file=binary\n"
     "                load SMBIOS entry from binary file\n"
     "-smbios type=0[,vendor=str][,version=str][,date=str][,release=%d.%d]\n"
-    "              [,uefi=on|off]\n"
+    "              [,uefi=on|off][,vm=on|off]\n"
     "                specify SMBIOS type 0 fields\n"
     "-smbios type=1[,manufacturer=str][,product=str][,version=str][,serial=str]\n"
     "              [,uuid=uuid][,sku=str][,family=str]\n"
@@ -3317,8 +3375,8 @@ SRST
 
         Note that a SAMBA server must be installed on the host OS.
 
-    ``hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport``
-        Redirect incoming TCP or UDP connections to the host port
+    ``hostfwd=[tcp|udp|unix]:[[hostaddr]:hostport|hostpath]-[guestaddr]:guestport``
+        Redirect incoming TCP, UDP or UNIX connections to the host port
         hostport to the guest IP address guestaddr on guest port
         guestport. If guestaddr is not specified, its value is x.x.x.15
         (default first address given by the built-in DHCP server). By
@@ -3347,6 +3405,13 @@ SRST
 
         Then when you use on the host ``telnet localhost 5555``, you
         connect to the guest telnet server.
+
+        To redirect host unix socket /tmp/vm to guest tcp socket 23 use
+        following:
+
+        .. parsed-literal::
+            # on the host
+            |qemu_system| -nic user,hostfwd=unix:/tmp/vm-:23
 
     ``guestfwd=[tcp]:server:port-dev``; \ ``guestfwd=[tcp]:server:port-cmd:command``
         Forward guest TCP connections to the IP address server on port
@@ -4491,7 +4556,7 @@ DEF("compat", HAS_ARG, QEMU_OPTION_compat,
     "                Policy for handling unstable management interfaces\n",
     QEMU_ARCH_ALL)
 SRST
-``-compat [deprecated-input=@var{input-policy}][,deprecated-output=@var{output-policy}]``
+``-compat [deprecated-input=<input-policy>][,deprecated-output=<output-policy>]``
     Set policy for handling deprecated management interfaces (experimental):
 
     ``deprecated-input=accept`` (default)
@@ -4507,7 +4572,7 @@ SRST
 
     Limitation: covers only syntactic aspects of QMP.
 
-``-compat [unstable-input=@var{input-policy}][,unstable-output=@var{output-policy}]``
+``-compat [unstable-input=<input-policy>][,unstable-output=<output-policy>]``
     Set policy for handling unstable management interfaces (experimental):
 
     ``unstable-input=accept`` (default)
@@ -5347,13 +5412,6 @@ SRST
         specified, the former is passed to semihosting as it always
         takes precedence.
 ERST
-DEF("old-param", 0, QEMU_OPTION_old_param,
-    "-old-param      old param mode\n", QEMU_ARCH_ARM)
-SRST
-``-old-param``
-    Old param mode (ARM only).
-ERST
-
 DEF("sandbox", HAS_ARG, QEMU_OPTION_sandbox, \
     "-sandbox on[,obsolete=allow|deny][,elevateprivileges=allow|deny|children]\n" \
     "          [,spawn=allow|deny][,resourcecontrol=allow|deny]\n" \
@@ -5437,15 +5495,18 @@ DEF("qtest-log", HAS_ARG, QEMU_OPTION_qtest_log, "", QEMU_ARCH_ALL)
 
 #if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
 DEF("run-with", HAS_ARG, QEMU_OPTION_run_with,
-    "-run-with [async-teardown=on|off][,chroot=dir][user=username|uid:gid]\n"
+    "-run-with [async-teardown=on|off][,chroot=dir]\n" \
+    "          [,exit-with-parent=on|off][,user=username|uid:gid]\n"
     "                Set miscellaneous QEMU process lifecycle options:\n"
     "                async-teardown=on enables asynchronous teardown (Linux only)\n"
+    "                exit-with-parent=on causes QEMU to exit if the parent\n"
+    "                  process of QEMU exits (Linux, FreeBSD, macOS only)\n"
     "                chroot=dir chroot to dir just before starting the VM\n"
     "                user=username switch to the specified user before starting the VM\n"
     "                user=uid:gid ditto, but use specified user-ID and group-ID instead\n",
     QEMU_ARCH_ALL)
 SRST
-``-run-with [async-teardown=on|off][,chroot=dir][user=username|uid:gid]``
+``-run-with [async-teardown=on|off][,chroot=dir][,exit-with-parent=on|off][,user=username|uid:gid]``
     Set QEMU process lifecycle options.
 
     ``async-teardown=on`` enables asynchronous teardown. A new process called
@@ -5462,6 +5523,12 @@ SRST
     ``chroot=dir`` can be used for doing a chroot to the specified directory
     immediately before starting the guest execution. This is especially useful
     in combination with ``user=...``.
+
+    ``exit-with-parent=on`` causes QEMU to exit if the parent process of
+    QEMU exits.  This can be used when QEMU runs a captive appliance,
+    where the lifetime of the appliance is scoped to the parent process.
+    In case the parent process crashes, QEMU is still cleaned up.
+    This only works on Linux, FreeBSD and macOS platforms.
 
     ``user=username`` or ``user=uid:gid`` can be used to drop root privileges
     before starting guest execution. QEMU will use the ``setuid`` and ``setgid``
@@ -5931,22 +5998,31 @@ SRST
         stored. The file format is libpcap, so it can be analyzed with
         tools such as tcpdump or Wireshark.
 
-    ``-object colo-compare,id=id,primary_in=chardevid,secondary_in=chardevid,outdev=chardevid,iothread=id[,vnet_hdr_support][,notify_dev=id][,compare_timeout=@var{ms}][,expired_scan_cycle=@var{ms}][,max_queue_size=@var{size}]``
-        Colo-compare gets packet from primary\_in chardevid and
-        secondary\_in, then compare whether the payload of primary packet
-        and secondary packet are the same. If same, it will output
-        primary packet to out\_dev, else it will notify COLO-framework to do
-        checkpoint and send primary packet to out\_dev. In order to
-        improve efficiency, we need to put the task of comparison in
-        another iothread. If it has the vnet\_hdr\_support flag,
-        colo compare will send/recv packet with vnet\_hdr\_len.
-        The compare\_timeout=@var{ms} determines the maximum time of the
-        colo-compare hold the packet. The expired\_scan\_cycle=@var{ms}
-        is to set the period of scanning expired primary node network packets.
-        The max\_queue\_size=@var{size} is to set the max compare queue
-        size depend on user environment.
-        If user want to use Xen COLO, need to add the notify\_dev to
-        notify Xen colo-frame to do checkpoint.
+    ``-object colo-compare,id=<id>,primary_in=<chardevid>,secondary_in=<chardevid>,outdev=<chardevid>,iothread=<id>[,vnet_hdr_support][,notify_dev=<id>][,compare_timeout=<time_ms>][,expired_scan_cycle=<time_ms>][,max_queue_size=<maxsize>]``
+        Colo-compare gets packets from the chardev backends specified by
+        ``primary_in`` and ``secondary_in``, and compares whether the payloads
+        of the primary packet and the secondary packet are the same.
+        If they match, it will output the primary packet to the chardev
+        backend specified by ``outdev``; otherwise it will notify COLO-framework
+        to do a checkpoint and send the primary packet to ``outdev``.
+
+        In order to improve efficiency, we need to put the task of comparison in
+        another iothread; the ``iothread`` option specifies that iothread object
+        (which your commandline should create).
+
+        The ``vnet_hdr_support`` flag tells
+        colo compare to pass the vnet header length when it sends and receives packets.
+
+        The ``compare_timeout`` option sets the maximum time that
+        colo-compare will hold the packet for, in ms.
+
+        The ``expired_scan_cycle`` option sets the period of scanning expired
+        primary node network packets, in ms.
+
+        The ``max_queue_size`` option sets the max compare queue size.
+
+        If you want to use Xen COLO, you need to specify ``notify_dev`` to
+        tell colo-compare how to notify Xen colo-frame to do a checkpoint.
 
         COLO-compare must be used with the help of filter-mirror,
         filter-redirector and filter-rewriter.

@@ -560,6 +560,24 @@ the options along with the machine models they were intended for.
 
 Use ``-run-with user=..`` instead.
 
+``-old-param`` option for booting Arm kernels via param_struct (removed in 10.2)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The ``-old-param`` command line option was specific to Arm targets:
+it was used when directly booting a guest kernel to pass it the
+command line and other information via the old ``param_struct`` ABI,
+rather than the newer ATAGS or DTB mechanisms. This option was only
+ever needed to support ancient kernels on some old board types
+like the ``akita`` or ``terrier``; it has been deprecated in the
+kernel since 2001. None of the board types QEMU supports need
+``param_struct`` support, so this option has been removed.
+
+32-bit host operating systems (removed in 11.0)
+'''''''''''''''''''''''''''''''''''''''''''''''
+
+Keeping 32-bit host support alive was a substantial burden for the
+QEMU project.  Thus QEMU dropped all support for all 32-bit host systems.
+
 
 User-mode emulator command line arguments
 -----------------------------------------
@@ -698,12 +716,28 @@ Use blockdev-mirror with NBD instead. See "QMP invocation for live
 storage migration with ``blockdev-mirror`` + NBD" in
 docs/interop/live-block-operations.rst for a detailed explanation.
 
+``migrate`` command with file-based ``fd:`` URI (removed in 11.0)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+In order to reduce ambiguity, the ``fd:`` URI usage of providing a
+file descriptor to a plain file has been removed in favor of
+explicitly using the ``file:`` URI with the file descriptor being
+passed as an ``fdset``. Refer to the ``add-fd`` command documentation
+for details on the ``fdset`` usage.
+
 ``migrate-set-capabilities`` ``block`` option (removed in 9.1)
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 Block migration has been removed. For a replacement, see "QMP
 invocation for live storage migration with ``blockdev-mirror`` + NBD"
 in docs/interop/live-block-operations.rst.
+
+``migrate-set-capabilities`` ``zero-blocks`` option (removed in 11.0)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The ``zero-blocks`` capability was accidentally left behind when
+block migration capability got removed in 9.1.  Removed with no
+replacement.
 
 ``migrate-set-parameter`` ``compress-level`` option (removed in 9.1)
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -738,6 +772,20 @@ QEMU used to incorrectly accept certain invalid arguments. Any object
 or list arguments were silently ignored. Other argument types were not
 checked, but an implicit conversion happened, so that e.g. string
 values could be assigned to integer device properties or vice versa.
+
+``query-migrationthreads`` (removed in 11.0)
+''''''''''''''''''''''''''''''''''''''''''''
+
+Removed with no replacement, as it reported only a limited set of
+threads (for example, it only reported source side of multifd threads,
+without reporting any destination threads, or non-multifd source
+threads).  For debugging purpose, please use ``-name
+$VM,debug-threads=on`` instead.
+
+``migrate`` argument ``detach`` (since 11.0)
+''''''''''''''''''''''''''''''''''''''''''''
+
+This argument has always been ignored.
 
 QEMU Machine Protocol (QMP) events
 ----------------------------------
@@ -883,6 +931,17 @@ requirements of 64-bit guests.  Prior to 10.0, QEMU attempted to
 work around the atomicity issues in system mode by running all vCPUs
 in a single thread context; in user mode atomicity was simply broken.
 From 10.0, QEMU has disabled configuration of 64-bit guests on 32-bit hosts.
+
+32-bit MIPS (since 10.2)
+''''''''''''''''''''''''
+
+Debian 12 "Bookworm" removed support for 32-bit MIPS, making it hard to
+maintain our cross-compilation CI tests of the architecture.
+
+32-bit PPC (since 10.2)
+'''''''''''''''''''''''
+
+The QEMU project no longer supports 32-bit host builds.
 
 Guest Emulator ISAs
 -------------------
@@ -1113,6 +1172,14 @@ Mips ``mipssim`` machine (removed in 10.2)
 Linux dropped support for this virtual machine type in kernel v3.7, and
 there was also no binary available online to use with that board.
 
+Arm ``ast2700a0-evb`` machine (since 11.0)
+''''''''''''''''''''''''''''''''''''''''''
+
+The ``ast2700a0-evb`` machine represents the first revision of the AST2700
+and serves as the initial engineering sample rather than a production version.
+A newer revision, A1, is now supported, and the ``ast2700a1-evb`` should
+replace the older A0 version.
+
 linux-user mode CPUs
 --------------------
 
@@ -1137,6 +1204,20 @@ reason the maintainers strongly suspected no one actually used it.
 
 QEMU Nios II architecture was orphan; Intel has EOL'ed the Nios II
 processor IP (see `Intel discontinuance notification`_).
+
+iwMMXt emulation and the ``pxa`` CPUs (removed in 10.2)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The ``pxa`` CPU family (``pxa250``, ``pxa255``, ``pxa260``,
+``pxa261``, ``pxa262``, ``pxa270-a0``, ``pxa270-a1``, ``pxa270``,
+``pxa270-b0``, ``pxa270-b1``, ``pxa270-c0``, ``pxa270-c5``) were
+not available in system emulation, because all the machine types which
+used these CPUs were removed in the QEMU 9.2 release. We don't
+believe that anybody was using the iwMMXt emulation (which you
+would have to explicitly enable on the command line), and we did
+not have any tests to validate it or any real hardware or similar
+known-good implementation to test against. These CPUs have
+therefore been removed in linux-user mode as well.
 
 TCG introspection features
 --------------------------
@@ -1334,5 +1415,27 @@ both, older and future versions of QEMU.
 The ``blacklist`` config file option has been renamed to ``block-rpcs``
 (to be in sync with the renaming of the corresponding command line
 option).
+
+Device options
+--------------
+
+Character device options
+''''''''''''''''''''''''
+
+``reconnect`` (removed in 10.2)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``reconnect`` has been replaced by ``reconnect-ms``, which provides
+better precision.
+
+Net device options
+''''''''''''''''''
+
+Stream ``reconnect`` (removed in 10.2)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``reconnect`` has been replaced by ``reconnect-ms``, which provides
+better precision.
+
 
 .. _Intel discontinuance notification: https://www.intel.com/content/www/us/en/content-details/781327/intel-is-discontinuing-ip-ordering-codes-listed-in-pdn2312-for-nios-ii-ip.html

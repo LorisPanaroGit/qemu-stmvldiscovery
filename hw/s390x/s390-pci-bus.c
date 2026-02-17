@@ -20,11 +20,12 @@
 #include "hw/s390x/s390-pci-kvm.h"
 #include "hw/s390x/s390-pci-vfio.h"
 #include "hw/s390x/s390-virtio-ccw.h"
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "hw/pci/pci_bus.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/msi.h"
+#include "exec/cpu-common.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "system/reset.h"
@@ -461,8 +462,8 @@ static uint64_t table_translate(S390IOTLBEntry *entry, uint64_t to, int8_t ett,
     uint16_t err = 0;
 
     tx = get_table_index(entry->iova, ett);
-    te = address_space_ldq(&address_space_memory, to + tx * sizeof(uint64_t),
-                           MEMTXATTRS_UNSPECIFIED, NULL);
+    te = address_space_ldq_be(&address_space_memory, to + tx * sizeof(uint64_t),
+                              MEMTXATTRS_UNSPECIFIED, NULL);
 
     if (!te) {
         err = ERR_EVENT_INVALTE;
@@ -652,7 +653,16 @@ static const PCIIOMMUOps s390_iommu_ops = {
     .get_address_space = s390_pci_dma_iommu,
 };
 
-static uint8_t set_ind_atomic(uint64_t ind_loc, uint8_t to_be_set)
+/**
+ * set_ind_bit_atomic - Atomically set a bit in an indicator
+ *
+ * @ind_loc:   Address of the indicator
+ * @to_be_set: Bit to set
+ *
+ * Returns true if the bit was set by this function, false if it was
+ * already set or mapping failed.
+ */
+static bool set_ind_bit_atomic(uint64_t ind_loc, uint8_t to_be_set)
 {
     uint8_t expected, actual;
     hwaddr len = 1;
@@ -662,7 +672,7 @@ static uint8_t set_ind_atomic(uint64_t ind_loc, uint8_t to_be_set)
     ind_addr = cpu_physical_memory_map(ind_loc, &len, true);
     if (!ind_addr) {
         s390_pci_generate_error_event(ERR_EVENT_AIRERR, 0, 0, 0, 0);
-        return -1;
+        return false;
     }
     actual = *ind_addr;
     do {
@@ -671,7 +681,7 @@ static uint8_t set_ind_atomic(uint64_t ind_loc, uint8_t to_be_set)
     } while (actual != expected);
     cpu_physical_memory_unmap((void *)ind_addr, len, 1, len);
 
-    return actual;
+    return (actual & to_be_set) ? false : true;
 }
 
 static void s390_msi_ctrl_write(void *opaque, hwaddr addr, uint64_t data,
@@ -693,10 +703,10 @@ static void s390_msi_ctrl_write(void *opaque, hwaddr addr, uint64_t data,
     ind_bit = pbdev->routes.adapter.ind_offset;
     sum_bit = pbdev->routes.adapter.summary_offset;
 
-    set_ind_atomic(pbdev->routes.adapter.ind_addr + (ind_bit + vec) / 8,
+    set_ind_bit_atomic(pbdev->routes.adapter.ind_addr + (ind_bit + vec) / 8,
                    0x80 >> ((ind_bit + vec) % 8));
-    if (!set_ind_atomic(pbdev->routes.adapter.summary_addr + sum_bit / 8,
-                                       0x80 >> (sum_bit % 8))) {
+    if (set_ind_bit_atomic(pbdev->routes.adapter.summary_addr + sum_bit / 8,
+                   0x80 >> (sum_bit % 8))) {
         css_adapter_interrupt(CSS_IO_ADAPTER_PCI, pbdev->isc);
     }
 }
@@ -891,6 +901,7 @@ static void s390_pcihost_realize(DeviceState *dev, Error **errp)
     s390_pci_init_default_group();
     css_register_io_adapters(CSS_IO_ADAPTER_PCI, true, false,
                              S390_ADAPTER_SUPPRESSIBLE, errp);
+    s390_pcihost_kvm_realize();
 }
 
 static void s390_pcihost_unrealize(DeviceState *dev)

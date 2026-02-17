@@ -11,7 +11,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/qdev-core.h"
+#include "hw/core/qdev.h"
 #include "qapi/error.h"
 #include "qom/object.h"
 #include "qom/object_interfaces.h"
@@ -1730,6 +1730,7 @@ const char *object_property_get_type(Object *obj, const char *name, Error **errp
 }
 
 static const char *const root_containers[] = {
+    "audiodevs",
     "chardevs",
     "objects",
     "backend"

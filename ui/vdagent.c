@@ -5,7 +5,7 @@
 #include "qemu/error-report.h"
 #include "qemu/option.h"
 #include "qemu/units.h"
-#include "hw/qdev-core.h"
+#include "hw/core/qdev.h"
 #include "ui/clipboard.h"
 #include "ui/console.h"
 #include "ui/input.h"
@@ -316,6 +316,15 @@ static bool have_selection(VDAgentChardev *vd)
     return vd->caps & (1 << VD_AGENT_CAP_CLIPBOARD_SELECTION);
 }
 
+static bool have_clipboard_serial(VDAgentChardev *vd)
+{
+#if CHECK_SPICE_PROTOCOL_VERSION(0, 14, 1)
+    return vd->caps & (1 << VD_AGENT_CAP_CLIPBOARD_GRAB_SERIAL);
+#else
+    return false;
+#endif
+}
+
 static uint32_t type_qemu_to_vdagent(enum QemuClipboardType type)
 {
     switch (type) {
@@ -345,8 +354,7 @@ static void vdagent_send_clipboard_grab(VDAgentChardev *vd,
         return;
     }
 
-#if CHECK_SPICE_PROTOCOL_VERSION(0, 14, 1)
-    if (vd->caps & (1 << VD_AGENT_CAP_CLIPBOARD_GRAB_SERIAL)) {
+    if (have_clipboard_serial(vd)) {
         if (!info->has_serial) {
             /* client should win */
             info->serial = vd->last_serial[info->selection]++;
@@ -356,7 +364,6 @@ static void vdagent_send_clipboard_grab(VDAgentChardev *vd,
         data++;
         msg->size += sizeof(uint32_t);
     }
-#endif
 
     for (q = 0; q < QEMU_CLIPBOARD_TYPE__COUNT; q++) {
         type = type_qemu_to_vdagent(q);
@@ -464,6 +471,9 @@ static void vdagent_clipboard_reset_serial(VDAgentChardev *vd)
 {
     Chardev *chr = CHARDEV(vd);
 
+    if (!have_clipboard_serial(vd)) {
+        return;
+    }
     /* reopen the agent connection to reset the serial state */
     qemu_chr_be_event(chr, CHR_EVENT_CLOSED);
     /* OPENED again after the guest disconnected, see set_fe_open */
@@ -518,8 +528,7 @@ static void vdagent_clipboard_recv_grab(VDAgentChardev *vd, uint8_t s, uint32_t 
 
     trace_vdagent_cb_grab_selection(GET_NAME(sel_name, s));
     info = qemu_clipboard_info_new(&vd->cbpeer, s);
-#if CHECK_SPICE_PROTOCOL_VERSION(0, 14, 1)
-    if (vd->caps & (1 << VD_AGENT_CAP_CLIPBOARD_GRAB_SERIAL)) {
+    if (have_clipboard_serial(vd)) {
         if (size < sizeof(uint32_t)) {
             /* this shouldn't happen! */
             return;
@@ -537,7 +546,6 @@ static void vdagent_clipboard_recv_grab(VDAgentChardev *vd, uint8_t s, uint32_t 
         data += sizeof(uint32_t);
         size -= sizeof(uint32_t);
     }
-#endif
     if (size > sizeof(uint32_t) * 10) {
         /*
          * spice has 6 types as of 2021. Limiting to 10 entries
@@ -652,9 +660,7 @@ static void vdagent_chr_recv_clipboard(VDAgentChardev *vd, VDAgentMessage *msg)
 /* ------------------------------------------------------------------ */
 /* chardev backend                                                    */
 
-static void vdagent_chr_open(Chardev *chr,
-                             ChardevBackend *backend,
-                             bool *be_opened,
+static bool vdagent_chr_open(Chardev *chr, ChardevBackend *backend,
                              Error **errp)
 {
     VDAgentChardev *vd = QEMU_VDAGENT_CHARDEV(chr);
@@ -666,7 +672,7 @@ static void vdagent_chr_open(Chardev *chr,
      * so we have to byteswap everything on BE hosts.
      */
     error_setg(errp, "vdagent is not supported on bigendian hosts");
-    return;
+    return false;
 #endif
 
     vd->mouse = VDAGENT_MOUSE_DEFAULT;
@@ -684,7 +690,8 @@ static void vdagent_chr_open(Chardev *chr,
                                                    &vdagent_mouse_handler);
     }
 
-    *be_opened = true;
+    qemu_chr_be_event(chr, CHR_EVENT_OPENED);
+    return true;
 }
 
 static void vdagent_clipboard_peer_register(VDAgentChardev *vd)
@@ -916,8 +923,8 @@ static void vdagent_chr_class_init(ObjectClass *oc, const void *data)
 {
     ChardevClass *cc = CHARDEV_CLASS(oc);
 
-    cc->parse            = vdagent_chr_parse;
-    cc->open             = vdagent_chr_open;
+    cc->chr_parse        = vdagent_chr_parse;
+    cc->chr_open         = vdagent_chr_open;
     cc->chr_write        = vdagent_chr_write;
     cc->chr_set_fe_open  = vdagent_chr_set_fe_open;
     cc->chr_accept_input = vdagent_chr_accept_input;
@@ -992,7 +999,8 @@ static int put_cbinfo(QEMUFile *f, void *pv, size_t size,
         }
     }
 
-    return vmstate_save_state(f, &vmstate_cbinfo_array, &cbinfo, vmdesc);
+    return vmstate_save_state(f, &vmstate_cbinfo_array, &cbinfo, vmdesc,
+                              &error_fatal);
 }
 
 static int get_cbinfo(QEMUFile *f, void *pv, size_t size,
@@ -1001,6 +1009,7 @@ static int get_cbinfo(QEMUFile *f, void *pv, size_t size,
     VDAgentChardev *vd = QEMU_VDAGENT_CHARDEV(pv);
     struct CBInfoArray cbinfo = {};
     int i, ret;
+    Error *local_err = NULL;
 
     if (!have_clipboard(vd)) {
         return 0;
@@ -1008,8 +1017,10 @@ static int get_cbinfo(QEMUFile *f, void *pv, size_t size,
 
     vdagent_clipboard_peer_register(vd);
 
-    ret = vmstate_load_state(f, &vmstate_cbinfo_array, &cbinfo, 0);
+    ret = vmstate_load_state(f, &vmstate_cbinfo_array, &cbinfo, 0,
+                             &local_err);
     if (ret) {
+        error_report_err(local_err);
         return ret;
     }
 
@@ -1063,7 +1074,7 @@ static const VMStateDescription vmstate_vdagent = {
     }
 };
 
-static void vdagent_chr_init(Object *obj)
+static void vdagent_chr_instance_init(Object *obj)
 {
     VDAgentChardev *vd = QEMU_VDAGENT_CHARDEV(obj);
 
@@ -1086,7 +1097,7 @@ static const TypeInfo vdagent_chr_type_info = {
     .name = TYPE_CHARDEV_QEMU_VDAGENT,
     .parent = TYPE_CHARDEV,
     .instance_size = sizeof(VDAgentChardev),
-    .instance_init = vdagent_chr_init,
+    .instance_init = vdagent_chr_instance_init,
     .instance_finalize = vdagent_chr_fini,
     .class_init = vdagent_chr_class_init,
 };

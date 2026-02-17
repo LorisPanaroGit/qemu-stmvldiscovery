@@ -30,7 +30,7 @@
 #include "migration/colo.h"
 #include "util.h"
 
-#include "block/aio-wait.h"
+#include "qemu/aio-wait.h"
 #include "qemu/coroutine.h"
 
 #define TYPE_COLO_COMPARE "colo-compare"
@@ -88,7 +88,7 @@ static uint32_t max_queue_size;
 typedef struct SendCo {
     Coroutine *co;
     struct CompareState *s;
-    CharBackend *chr;
+    CharFrontend *chr;
     GQueue send_list;
     bool notify_remote_frame;
     bool done;
@@ -108,10 +108,10 @@ struct CompareState {
     char *sec_indev;
     char *outdev;
     char *notify_dev;
-    CharBackend chr_pri_in;
-    CharBackend chr_sec_in;
-    CharBackend chr_out;
-    CharBackend chr_notify_dev;
+    CharFrontend chr_pri_in;
+    CharFrontend chr_sec_in;
+    CharFrontend chr_out;
+    CharFrontend chr_notify_dev;
     SocketReadState pri_rs;
     SocketReadState sec_rs;
     SocketReadState notify_rs;

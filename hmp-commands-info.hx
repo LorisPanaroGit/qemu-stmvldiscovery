@@ -267,18 +267,6 @@ ERST
         .cmd        = hmp_info_sync_profile,
     },
 
-    {
-        .name       = "accel",
-        .args_type  = "",
-        .params     = "",
-        .help       = "show accelerator info",
-    },
-
-SRST
-  ``info accel``
-    Show accelerator info.
-ERST
-
 SRST
   ``info sync-profile [-m|-n]`` [*max*]
     Show synchronization profiling info, up to *max* entries (default: 10),
@@ -295,6 +283,18 @@ SRST
 ERST
 
     {
+        .name       = "accel",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show accelerator statistics",
+    },
+
+SRST
+  ``info accel``
+    Show accelerator statistics.
+ERST
+
+    {
         .name       = "kvm",
         .args_type  = "",
         .params     = "",
@@ -305,6 +305,24 @@ ERST
 SRST
   ``info kvm``
     Show KVM information.
+ERST
+
+    {
+        .name       = "accelerators",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show present and enabled information",
+        .cmd        = hmp_info_accelerators,
+    },
+
+SRST
+  ``info accelerators``
+    Show which accelerators are compiled into a QEMU binary, and what accelerator
+    is in use. For example::
+
+        kvm qtest [tcg]
+
+    indicates that TCG in use, and that KVM and qtest are also available.
 ERST
 
     {
@@ -345,18 +363,20 @@ SRST
     Show host USB devices.
 ERST
 
+/* BEGIN deprecated */
     {
         .name       = "capture",
         .args_type  = "",
         .params     = "",
-        .help       = "show capture information",
+        .help       = "show capture information (deprecated)",
         .cmd        = hmp_info_capture,
     },
 
 SRST
   ``info capture``
-    Show capture information.
+    Show capture information (deprecated).
 ERST
+/* END deprecated */
 
     {
         .name       = "snapshots",
@@ -976,4 +996,17 @@ ERST
 SRST
   ``info cryptodev``
     Show the crypto devices.
+ERST
+
+    {
+        .name       = "firmware-log",
+        .args_type  = "max-size:o?",
+        .params     = "[max-size]",
+        .help       = "show the firmware (ovmf) debug log",
+        .cmd        = hmp_info_firmware_log,
+    },
+
+SRST
+  ``info firmware-log``
+    Show the firmware (ovmf) debug log.
 ERST

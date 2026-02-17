@@ -19,8 +19,9 @@
 #include "system/runstate.h"
 #include "system/address-spaces.h"
 #include "hw/i386/apic_internal.h"
-#include "hw/sysbus.h"
-#include "hw/boards.h"
+#include "hw/core/sysbus.h"
+#include "hw/core/boards.h"
+#include "exec/cpu-common.h"
 #include "migration/vmstate.h"
 #include "qom/object.h"
 
@@ -490,7 +491,7 @@ void vapic_report_tpr_access(DeviceState *dev, CPUState *cs, target_ulong ip,
 }
 
 typedef struct VAPICEnableTPRReporting {
-    DeviceState *apic;
+    APICCommonState *apic;
     bool enable;
 } VAPICEnableTPRReporting;
 

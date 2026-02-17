@@ -24,6 +24,7 @@
 #include "exec/helper-gen.h"
 #include "exec/target_page.h"
 #include "exec/translator.h"
+#include "accel/tcg/cpu-ldst.h"
 #include "exec/translation-block.h"
 #include "exec/log.h"
 #include "semihosting/semihost.h"
@@ -125,6 +126,18 @@ static inline bool has_ext(DisasContext *ctx, uint32_t ext)
     return ctx->misa_ext & ext;
 }
 
+static inline MemOp mo_endian(DisasContext *ctx)
+{
+    /*
+     * A couple of bits in MSTATUS set the endianness:
+     *  - MSTATUS_UBE (User-mode),
+     *  - MSTATUS_SBE (Supervisor-mode),
+     *  - MSTATUS_MBE (Machine-mode)
+     * but we don't implement that yet.
+     */
+    return MO_TE;
+}
+
 #ifdef TARGET_RISCV32
 #define get_xl(ctx)    MXL_RV32
 #elif defined(CONFIG_USER_ONLY)
@@ -141,7 +154,7 @@ static inline bool has_ext(DisasContext *ctx, uint32_t ext)
 #define get_address_xl(ctx)    ((ctx)->address_xl)
 #endif
 
-#define mxl_memop(ctx) ((get_xl(ctx) + 1) | MO_TE)
+#define mxl_memop(ctx) ((get_xl(ctx) + 1) | mo_endian(ctx))
 
 /* The word size for this machine mode. */
 static inline int __attribute__((unused)) get_xlen(DisasContext *ctx)
@@ -285,7 +298,8 @@ static void exit_tb(DisasContext *ctx)
     tcg_gen_exit_tb(NULL, 0);
 }
 
-static void gen_goto_tb(DisasContext *ctx, int n, target_long diff)
+static void gen_goto_tb(DisasContext *ctx, unsigned tb_slot_idx,
+                        target_long diff)
 {
     target_ulong dest = ctx->base.pc_next + diff;
 
@@ -304,12 +318,12 @@ static void gen_goto_tb(DisasContext *ctx, int n, target_long diff)
          */
         if (tb_cflags(ctx->base.tb) & CF_PCREL) {
             gen_update_pc(ctx, diff);
-            tcg_gen_goto_tb(n);
+            tcg_gen_goto_tb(tb_slot_idx);
         } else {
-            tcg_gen_goto_tb(n);
+            tcg_gen_goto_tb(tb_slot_idx);
             gen_update_pc(ctx, diff);
         }
-        tcg_gen_exit_tb(ctx->base.tb, n);
+        tcg_gen_exit_tb(ctx->base.tb, tb_slot_idx);
     } else {
         gen_update_pc(ctx, diff);
         lookup_and_goto_ptr(ctx);
@@ -1133,6 +1147,7 @@ static bool gen_amo(DisasContext *ctx, arg_atomic *a,
     TCGv src1, src2 = get_gpr(ctx, a->rs2, EXT_NONE);
     MemOp size = mop & MO_SIZE;
 
+    mop |= mo_endian(ctx);
     if (ctx->cfg_ptr->ext_zama16b && size >= MO_32) {
         mop |= MO_ATOM_WITHIN16;
     } else {
@@ -1153,6 +1168,7 @@ static bool gen_cmpxchg(DisasContext *ctx, arg_atomic *a, MemOp mop)
     TCGv src1 = get_address(ctx, a->rs1, 0);
     TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
 
+    mop |= mo_endian(ctx);
     decode_save_opc(ctx, RISCV_UW2_ALWAYS_STORE_AMO);
     tcg_gen_atomic_cmpxchg_tl(dest, src1, dest, src2, ctx->mem_idx, mop);
 
@@ -1165,8 +1181,9 @@ static uint32_t opcode_at(DisasContextBase *dcbase, target_ulong pc)
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
     CPUState *cpu = ctx->cs;
     CPURISCVState *env = cpu_env(cpu);
+    MemOpIdx oi = make_memop_idx(MO_LEUL, cpu_mmu_index(cpu, true));
 
-    return translator_ldl(env, &ctx->base, pc);
+    return cpu_ldl_code_mmu(env, pc, oi, 0);
 }
 
 #define SS_MMU_INDEX(ctx) (ctx->mem_idx | MMU_IDX_SS_WRITE)
@@ -1183,6 +1200,7 @@ static uint32_t opcode_at(DisasContextBase *dcbase, target_ulong pc)
 #include "insn_trans/trans_rvzicond.c.inc"
 #include "insn_trans/trans_rvzacas.c.inc"
 #include "insn_trans/trans_rvzabha.c.inc"
+#include "insn_trans/trans_rvzalasr.c.inc"
 #include "insn_trans/trans_rvzawrs.c.inc"
 #include "insn_trans/trans_rvzicbo.c.inc"
 #include "insn_trans/trans_rvzimop.c.inc"
@@ -1194,12 +1212,15 @@ static uint32_t opcode_at(DisasContextBase *dcbase, target_ulong pc)
 #include "insn_trans/trans_svinval.c.inc"
 #include "insn_trans/trans_rvbf16.c.inc"
 #include "decode-xthead.c.inc"
+#include "decode-xmips.c.inc"
 #include "insn_trans/trans_xthead.c.inc"
 #include "insn_trans/trans_xventanacondops.c.inc"
+#include "insn_trans/trans_xmips.c.inc"
 
 /* Include the auto-generated decoder for 16 bit insn */
 #include "decode-insn16.c.inc"
 #include "insn_trans/trans_rvzce.c.inc"
+#include "insn_trans/trans_zilsd.c.inc"
 #include "insn_trans/trans_rvzcmop.c.inc"
 #include "insn_trans/trans_rvzicfiss.c.inc"
 
@@ -1211,6 +1232,7 @@ static uint32_t opcode_at(DisasContextBase *dcbase, target_ulong pc)
 
 const RISCVDecoder decoder_table[] = {
     { always_true_p, decode_insn32 },
+    { has_xmips_p, decode_xmips},
     { has_xthead_p, decode_xthead},
     { has_XVentanaCondOps_p, decode_XVentanaCodeOps},
 };
@@ -1232,13 +1254,16 @@ static void decode_opc(CPURISCVState *env, DisasContext *ctx)
          * real one is 2 or 4 bytes. Instruction preload wouldn't trigger
          * additional page fault.
          */
-        opcode = translator_ldl(env, &ctx->base, ctx->base.pc_next);
+        opcode = translator_ldl_end(env, &ctx->base, ctx->base.pc_next,
+                                    mo_endian(ctx));
     } else {
         /*
          * For unaligned pc, instruction preload may trigger additional
          * page fault so we only load 2 bytes here.
          */
-        opcode = (uint32_t) translator_lduw(env, &ctx->base, ctx->base.pc_next);
+        opcode = (uint32_t) translator_lduw_end(env, &ctx->base,
+                                                ctx->base.pc_next,
+                                                mo_endian(ctx));
     }
     ctx->ol = ctx->xl;
 
@@ -1258,8 +1283,9 @@ static void decode_opc(CPURISCVState *env, DisasContext *ctx)
         if (!pc_is_4byte_align) {
             /* Load last 2 bytes of instruction here */
             opcode = deposit32(opcode, 16, 16,
-                               translator_lduw(env, &ctx->base,
-                                               ctx->base.pc_next + 2));
+                               translator_lduw_end(env, &ctx->base,
+                                                   ctx->base.pc_next + 2,
+                                                   mo_endian(ctx)));
         }
         ctx->opcode = opcode;
 
@@ -1374,7 +1400,8 @@ static void riscv_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
 
             if (page_ofs > TARGET_PAGE_SIZE - MAX_INSN_LEN) {
                 uint16_t next_insn =
-                    translator_lduw(env, &ctx->base, ctx->base.pc_next);
+                    translator_lduw_end(env, &ctx->base, ctx->base.pc_next,
+                                        mo_endian(ctx));
                 int len = insn_len(next_insn);
 
                 if (!translator_is_same_page(&ctx->base, ctx->base.pc_next + len - 1)) {

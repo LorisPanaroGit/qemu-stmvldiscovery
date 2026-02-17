@@ -25,7 +25,7 @@
 #include "qemu/osdep.h"
 #include "trace.h"
 #include "system/block-backend.h"
-#include "block/aio-wait.h"
+#include "qemu/aio-wait.h"
 #include "block/blockjob.h"
 #include "block/blockjob_int.h"
 #include "block/block_int.h"
@@ -39,15 +39,13 @@
 #include "qemu/main-loop.h"
 #include "system/replay.h"
 #include "qemu/units.h"
+#include "qemu/atomic.h"
 
 /* Maximum bounce buffer for copy-on-read and write zeroes, in bytes */
 #define MAX_BOUNCE_BUFFER (32768 << BDRV_SECTOR_BITS)
 
 /* Maximum read size for checking if data reads as zero, in bytes */
 #define MAX_ZERO_CHECK_BUFFER (128 * KiB)
-
-static void coroutine_fn GRAPH_RDLOCK
-bdrv_parent_cb_resize(BlockDriverState *bs);
 
 static int coroutine_fn bdrv_co_do_pwrite_zeroes(BlockDriverState *bs,
     int64_t offset, int64_t bytes, BdrvRequestFlags flags);
@@ -721,11 +719,14 @@ BdrvTrackedRequest *coroutine_fn bdrv_co_get_self_request(BlockDriverState *bs)
     Coroutine *self = qemu_coroutine_self();
     IO_CODE();
 
+    qemu_mutex_lock(&bs->reqs_lock);
     QLIST_FOREACH(req, &bs->tracked_requests, list) {
         if (req->co == self) {
+            qemu_mutex_unlock(&bs->reqs_lock);
             return req;
         }
     }
+    qemu_mutex_unlock(&bs->reqs_lock);
 
     return NULL;
 }
@@ -2038,13 +2039,20 @@ bdrv_co_write_req_finish(BdrvChild *child, int64_t offset, int64_t bytes,
          end_sector > bs->total_sectors) &&
         req->type != BDRV_TRACKED_DISCARD) {
         bs->total_sectors = end_sector;
-        bdrv_parent_cb_resize(bs);
+        bdrv_co_parent_cb_resize(bs);
         bdrv_dirty_bitmap_truncate(bs, end_sector << BDRV_SECTOR_BITS);
     }
     if (req->bytes) {
         switch (req->type) {
         case BDRV_TRACKED_WRITE:
-            stat64_max(&bs->wr_highest_offset, offset + bytes);
+            {
+                uint64_t new = offset + bytes;
+                uint64_t old = qatomic_read(&bs->wr_highest_offset);
+
+                while (old < new) {
+                    old = qatomic_cmpxchg(&bs->wr_highest_offset, old, new);
+                }
+            }
             /* fall through, to set dirty bits */
         case BDRV_TRACKED_DISCARD:
             bdrv_set_dirty(bs, offset, bytes);
@@ -3570,11 +3578,11 @@ int coroutine_fn bdrv_co_copy_range(BdrvChild *src, int64_t src_offset,
                                    bytes, read_flags, write_flags);
 }
 
-static void coroutine_fn GRAPH_RDLOCK
-bdrv_parent_cb_resize(BlockDriverState *bs)
+void coroutine_fn bdrv_co_parent_cb_resize(BlockDriverState *bs)
 {
     BdrvChild *c;
 
+    IO_CODE();
     assert_bdrv_graph_readable();
 
     QLIST_FOREACH(c, &bs->parents, next_parent) {

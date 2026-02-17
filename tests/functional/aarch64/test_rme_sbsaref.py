@@ -14,7 +14,6 @@ from os.path import join
 import shutil
 
 from qemu_test import QemuSystemTest, Asset, wait_for_console_pattern
-from qemu_test import exec_command_and_wait_for_pattern
 
 
 class Aarch64RMESbsaRefMachine(QemuSystemTest):
@@ -25,8 +24,8 @@ class Aarch64RMESbsaRefMachine(QemuSystemTest):
     # ./build.sh && ./archive_artifacts.sh out.tar.xz
     ASSET_RME_STACK_SBSA = Asset(
         ('https://github.com/pbo-linaro/qemu-linux-stack/'
-         'releases/download/build/rme_sbsa_release-a7f02cf.tar.xz'),
-         '27d8400b11befb828d6db0cab97e7ae102d0992c928d3dfbf38b24b6cf6c324c')
+         'releases/download/build/rme_sbsa_release-6a2dfc5.tar.xz'),
+         '5adba482aa069912292a8da746c6b21268224d9d81c97fe7c0bed690579ebdcb')
 
     # This tests the FEAT_RME cpu implementation, by booting a VM supporting it,
     # and launching a nested VM using it.
@@ -48,7 +47,7 @@ class Aarch64RMESbsaRefMachine(QemuSystemTest):
         efi = join(rme_stack, 'out', 'EFI')
         os.makedirs(efi, exist_ok=True)
         shutil.copyfile(join(rme_stack, 'out', 'Image'), join(efi, 'Image'))
-        with open(join(efi, 'startup.nsh'), 'w') as startup:
+        with open(join(efi, 'startup.nsh'), 'w', encoding='ascii') as startup:
             startup.write('fs0:Image nokaslr root=/dev/vda rw init=/init --'
                           ' /host/out/lkvm run --realm'
                           ' -m 256m'

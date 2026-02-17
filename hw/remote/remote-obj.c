@@ -13,7 +13,7 @@
 #include "qemu/notify.h"
 #include "qom/object_interfaces.h"
 #include "io/channel.h"
-#include "hw/qdev-core.h"
+#include "hw/core/qdev.h"
 #include "hw/remote/machine.h"
 #include "io/channel-util.h"
 #include "qapi/error.h"
@@ -107,7 +107,11 @@ static void remote_object_machine_done(Notifier *notifier, void *data)
         error_report_err(err);
         return;
     }
-    qio_channel_set_blocking(ioc, false, NULL);
+    if (!qio_channel_set_blocking(ioc, false, &err)) {
+        error_report_err(err);
+        object_unref(OBJECT(ioc));
+        return;
+    }
 
     o->dev = dev;
 

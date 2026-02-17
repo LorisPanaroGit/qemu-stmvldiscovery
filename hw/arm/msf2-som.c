@@ -29,10 +29,11 @@
 #include "qemu/units.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "hw/boards.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/boards.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/arm/boot.h"
-#include "hw/qdev-clock.h"
+#include "hw/arm/machines-qom.h"
+#include "hw/core/qdev-clock.h"
 #include "system/address-spaces.h"
 #include "hw/arm/msf2-soc.h"
 
@@ -108,4 +109,4 @@ static void emcraft_sf2_machine_init(MachineClass *mc)
     mc->valid_cpu_types = valid_cpu_types;
 }
 
-DEFINE_MACHINE("emcraft-sf2", emcraft_sf2_machine_init)
+DEFINE_MACHINE_ARM("emcraft-sf2", emcraft_sf2_machine_init)

@@ -23,7 +23,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "block/block.h"
 #include "block/export.h"
 #include "chardev/char.h"
@@ -31,8 +31,8 @@
 #include "crypto/init.h"
 #include "exec/cpu-common.h"
 #include "gdbstub/syscalls.h"
-#include "hw/boards.h"
-#include "hw/resettable.h"
+#include "hw/core/boards.h"
+#include "hw/core/resettable.h"
 #include "migration/misc.h"
 #include "migration/postcopy-ram.h"
 #include "monitor/monitor.h"
@@ -76,9 +76,6 @@ typedef struct {
 } RunStateTransition;
 
 static const RunStateTransition runstate_transitions_def[] = {
-    { RUN_STATE_PRELAUNCH, RUN_STATE_INMIGRATE },
-    { RUN_STATE_PRELAUNCH, RUN_STATE_SUSPENDED },
-
     { RUN_STATE_DEBUG, RUN_STATE_RUNNING },
     { RUN_STATE_DEBUG, RUN_STATE_FINISH_MIGRATE },
     { RUN_STATE_DEBUG, RUN_STATE_PRELAUNCH },
@@ -118,6 +115,7 @@ static const RunStateTransition runstate_transitions_def[] = {
     { RUN_STATE_PRELAUNCH, RUN_STATE_RUNNING },
     { RUN_STATE_PRELAUNCH, RUN_STATE_FINISH_MIGRATE },
     { RUN_STATE_PRELAUNCH, RUN_STATE_INMIGRATE },
+    { RUN_STATE_PRELAUNCH, RUN_STATE_SUSPENDED },
 
     { RUN_STATE_FINISH_MIGRATE, RUN_STATE_RUNNING },
     { RUN_STATE_FINISH_MIGRATE, RUN_STATE_PAUSED },
@@ -671,6 +669,10 @@ void qemu_system_guest_panicked(GuestPanicInformation *info)
                               "can be found at gpa page: 0x%" PRIx64 "\n",
                               info->u.tdx.gpa);
             }
+        } else if (info->type == GUEST_PANIC_INFORMATION_TYPE_SEV) {
+            qemu_log_mask(LOG_GUEST_ERROR, "SEV termination (reason set: %d code: %d)",
+                          info->u.sev.set,
+                          info->u.sev.code);
         }
 
         qapi_free_GuestPanicInformation(info);

@@ -29,11 +29,11 @@
 #include "qemu/datadir.h"
 #include "cpu.h"
 #include "exec/target_page.h"
-#include "hw/irq.h"
+#include "hw/core/irq.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/pci_host.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/pci-host/sabre.h"
 #include "hw/char/serial-isa.h"
 #include "hw/char/serial-mm.h"
@@ -46,15 +46,15 @@
 #include "qemu/timer.h"
 #include "system/runstate.h"
 #include "system/system.h"
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "hw/nvram/sun_nvram.h"
 #include "hw/nvram/chrp_nvram.h"
 #include "hw/sparc/sparc64.h"
 #include "hw/nvram/fw_cfg.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "hw/ide/pci.h"
-#include "hw/loader.h"
-#include "hw/fw-path-provider.h"
+#include "hw/core/loader.h"
+#include "hw/core/fw-path-provider.h"
 #include "elf.h"
 #include "trace.h"
 #include "qom/object.h"
@@ -182,7 +182,8 @@ static uint64_t sun4u_load_kernel(const char *kernel_filename,
         if (kernel_size < 0) {
             kernel_size = load_image_targphys(kernel_filename,
                                               KERNEL_LOAD_ADDR,
-                                              RAM_size - KERNEL_LOAD_ADDR);
+                                              RAM_size - KERNEL_LOAD_ADDR,
+                                              NULL);
         }
         if (kernel_size < 0) {
             error_report("could not load kernel '%s'", kernel_filename);
@@ -195,7 +196,7 @@ static uint64_t sun4u_load_kernel(const char *kernel_filename,
 
             *initrd_size = load_image_targphys(initrd_filename,
                                                *initrd_addr,
-                                               RAM_size - *initrd_addr);
+                                               RAM_size - *initrd_addr, NULL);
             if ((int)*initrd_size < 0) {
                 error_report("could not load initial ram disk '%s'",
                              initrd_filename);
@@ -205,9 +206,9 @@ static uint64_t sun4u_load_kernel(const char *kernel_filename,
         if (*initrd_size > 0) {
             for (i = 0; i < 64 * TARGET_PAGE_SIZE; i += TARGET_PAGE_SIZE) {
                 ptr = rom_ptr(*kernel_addr + i, 32);
-                if (ptr && ldl_p(ptr + 8) == 0x48647253) { /* HdrS */
-                    stl_p(ptr + 24, *initrd_addr + *kernel_addr);
-                    stl_p(ptr + 28, *initrd_size);
+                if (ptr && ldl_be_p(ptr + 8) == 0x48647253) { /* HdrS */
+                    stl_be_p(ptr + 24, *initrd_addr + *kernel_addr);
+                    stl_be_p(ptr + 28, *initrd_size);
                     break;
                 }
             }
@@ -437,7 +438,7 @@ static void prom_init(hwaddr addr, const char *bios_name)
         ret = load_elf(filename, NULL, translate_prom_address, &addr,
                        NULL, NULL, NULL, NULL, ELFDATA2MSB, EM_SPARCV9, 0, 0);
         if (ret < 0 || ret > PROM_SIZE_MAX) {
-            ret = load_image_targphys(filename, addr, PROM_SIZE_MAX);
+            ret = load_image_targphys(filename, addr, PROM_SIZE_MAX, NULL);
         }
         g_free(filename);
     } else {

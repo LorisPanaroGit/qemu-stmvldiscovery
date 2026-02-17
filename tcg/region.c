@@ -464,17 +464,6 @@ static size_t tcg_n_regions(size_t tb_size, unsigned max_threads)
  */
 #define MIN_CODE_GEN_BUFFER_SIZE     (1 * MiB)
 
-#if TCG_TARGET_REG_BITS == 32
-#define DEFAULT_CODE_GEN_BUFFER_SIZE_1 (32 * MiB)
-#ifdef CONFIG_USER_ONLY
-/*
- * For user mode on smaller 32 bit systems we may run into trouble
- * allocating big chunks of data in the right place. On these systems
- * we utilise a static code generation buffer directly in the binary.
- */
-#define USE_STATIC_CODE_GEN_BUFFER
-#endif
-#else /* TCG_TARGET_REG_BITS == 64 */
 #ifdef CONFIG_USER_ONLY
 /*
  * As user-mode emulation typically means running multiple instances
@@ -489,7 +478,6 @@ static size_t tcg_n_regions(size_t tb_size, unsigned max_threads)
  * runtime setup via the tb-size control on the command line.
  */
 #define DEFAULT_CODE_GEN_BUFFER_SIZE_1 (1 * GiB)
-#endif
 #endif
 
 #define DEFAULT_CODE_GEN_BUFFER_SIZE \
@@ -832,13 +820,16 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
             } else {
 #ifdef CONFIG_POSIX
                 rc = mprotect(start, end - start, need_prot);
+                if (rc) {
+                    error_report("mprotect of jit buffer: %s",
+                                 strerror(errno));
+                }
 #else
                 g_assert_not_reached();
 #endif
             }
             if (rc) {
-                error_setg_errno(&error_fatal, errno,
-                                 "mprotect of jit buffer");
+                exit(1);
             }
         }
         if (have_prot != 0) {

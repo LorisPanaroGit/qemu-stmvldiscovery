@@ -1,11 +1,11 @@
-Aspeed family boards (``ast2500-evb``, ``ast2600-evb``, ``ast2700-evb``, ``bletchley-bmc``, ``fuji-bmc``, ``gb200nvl-bmc``, ``fby35-bmc``, ``fp5280g2-bmc``, ``g220a-bmc``, ``palmetto-bmc``, ``qcom-dc-scm-v1-bmc``, ``qcom-firework-bmc``, ``quanta-q71l-bmc``, ``rainier-bmc``, ``romulus-bmc``, ``sonorapass-bmc``, ``supermicrox11-bmc``, ``supermicrox11spi-bmc``, ``tiogapass-bmc``, ``witherspoon-bmc``, ``yosemitev2-bmc``)
-====================================================================================================================================================================================================================================================================================================================================================================================================================================
+Aspeed family boards (``ast2500-evb``, ``ast2600-evb``, ``bletchley-bmc``, ``fuji-bmc``, ``gb200nvl-bmc``, ``fby35-bmc``, ``fp5280g2-bmc``, ``g220a-bmc``, ``palmetto-bmc``, ``qcom-dc-scm-v1-bmc``, ``qcom-firework-bmc``, ``quanta-q71l-bmc``, ``rainier-bmc``, ``romulus-bmc``, ``sonorapass-bmc``, ``supermicrox11-bmc``, ``supermicrox11spi-bmc``, ``tiogapass-bmc``, ``witherspoon-bmc``, ``yosemitev2-bmc``)
+===================================================================================================================================================================================================================================================================================================================================================================================================================
 
 The QEMU Aspeed machines model BMCs of various OpenPOWER systems and
 Aspeed evaluation boards. They are based on different releases of the
 Aspeed SoC : the AST2400 integrating an ARM926EJ-S CPU (400MHz), the
 AST2500 with an ARM1176JZS CPU (800MHz), the AST2600
-with dual cores ARM Cortex-A7 CPUs (1.2GHz).
+with dual cores Arm Cortex-A7 CPUs (1.2GHz).
 
 The SoC comes with RAM, Gigabit ethernet, USB, SD/MMC, USB, SPI, I2C,
 etc.
@@ -243,12 +243,43 @@ under Linux), use :
 
   -M ast2500-evb,bmc-console=uart3
 
-Aspeed 2700 family boards (``ast2700-evb``)
-==================================================================
+OTP Option
+^^^^^^^^^^
+
+Both the AST2600 and AST1030 chips use the same One Time Programmable
+(OTP) memory module, which is utilized for configuration, key storage,
+and storing user-programmable data. This OTP memory module is managed
+by the Secure Boot Controller (SBC). The following options can be
+specified or omitted based on your needs.
+
+  * When the options are specified, the pre-generated configuration
+    file will be used as the OTP memory storage.
+
+  * When the options are omitted, an internal memory buffer will be
+    used to store the OTP memory data.
+
+.. code-block:: bash
+
+  -blockdev driver=file,filename=otpmem.img,node-name=otp \
+  -global aspeed-otp.drive=otp \
+
+The following bash command can be used to generate a default
+configuration file for OTP memory:
+
+.. code-block:: bash
+
+  if [ ! -f otpmem.img ]; then
+    for i in $(seq 1 2048); do
+      printf '\x00\x00\x00\x00\xff\xff\xff\xff'
+    done > otpmem.img
+  fi
+
+Aspeed 2700 family boards (``ast2700-evb``, ``ast2700fc``)
+==========================================================
 
 The QEMU Aspeed machines model BMCs of Aspeed evaluation boards.
 They are based on different releases of the Aspeed SoC :
-the AST2700 with quad cores ARM Cortex-A35 64 bits CPUs (1.6GHz).
+the AST2700 with quad cores Arm Cortex-A35 64 bits CPUs (1.6GHz).
 
 The SoC comes with RAM, Gigabit ethernet, USB, SD/MMC, USB, SPI, I2C,
 etc.
@@ -319,11 +350,9 @@ corresponds to the BL31 image load address.
 .. code-block:: bash
 
   IMGDIR=ast2700-default
-  UBOOT_SIZE=$(stat --format=%s -L ${IMGDIR}/u-boot-nodtb.bin)
 
   $ qemu-system-aarch64 -M ast2700-evb \
-       -device loader,force-raw=on,addr=0x400000000,file=${IMGDIR}/u-boot-nodtb.bin \
-       -device loader,force-raw=on,addr=$((0x400000000 + ${UBOOT_SIZE})),file=${IMGDIR}/u-boot.dtb \
+       -device loader,force-raw=on,addr=0x400000000,file=${IMGDIR}/u-boot.bin \
        -device loader,force-raw=on,addr=0x430000000,file=${IMGDIR}/bl31.bin \
        -device loader,force-raw=on,addr=0x430080000,file=${IMGDIR}/optee/tee-raw.bin \
        -device loader,cpu-num=0,addr=0x430000000 \
@@ -378,11 +407,9 @@ Steps to boot the AST2700fc machine:
 .. code-block:: bash
 
   IMGDIR=ast2700-default
-  UBOOT_SIZE=$(stat --format=%s -L ${IMGDIR}/u-boot-nodtb.bin)
 
   $ qemu-system-aarch64 -M ast2700fc \
-       -device loader,force-raw=on,addr=0x400000000,file=${IMGDIR}/u-boot-nodtb.bin \
-       -device loader,force-raw=on,addr=$((0x400000000 + ${UBOOT_SIZE})),file=${IMGDIR}/u-boot.dtb \
+       -device loader,force-raw=on,addr=0x400000000,file=${IMGDIR}/u-boot.bin \
        -device loader,force-raw=on,addr=0x430000000,file=${IMGDIR}/bl31.bin \
        -device loader,force-raw=on,addr=0x430080000,file=${IMGDIR}/optee/tee-raw.bin \
        -device loader,cpu-num=0,addr=0x430000000 \
@@ -417,23 +444,24 @@ Use ``tio`` or another terminal emulator to connect to the consoles:
    $ tio /dev/pts/57
 
 
-Aspeed minibmc family boards (``ast1030-evb``)
-==================================================================
+Aspeed MiniBMC and Platform Root of Trust processor family boards (``ast1030-evb``, ``ast1060-evb``)
+====================================================================================================
 
-The QEMU Aspeed machines model mini BMCs of various Aspeed evaluation
-boards. They are based on different releases of the
-Aspeed SoC : the AST1030 integrating an ARM Cortex M4F CPU (200MHz).
+The QEMU Aspeed machines model mini BMCs and Platform Root of Trust processors of various Aspeed
+evaluation boards. They are based on different releases of the Aspeed SoC : the AST1030 (MiniBMC)
+and AST1060 (Platform Root of Trust Processor), both integrating an Arm Cortex M4F CPU (200MHz).
 
 The SoC comes with SRAM, SPI, I2C, etc.
 
-AST1030 SoC based machines :
+AST10x0 SoC based machines :
 
 - ``ast1030-evb``          Aspeed AST1030 Evaluation board (Cortex-M4F)
+- ``ast1060-evb``          Aspeed AST1060 Evaluation board (Cortex-M4F)
 
 Supported devices
 -----------------
 
- * SMP (for the AST1030 Cortex-M4F)
+ * SMP (for the Cortex-M4F)
  * Interrupt Controller (VIC)
  * Timer Controller
  * I2C Controller
@@ -461,6 +489,8 @@ Missing devices
  * Virtual UART
  * eSPI Controller
  * I3C Controller
+ * SMBus Filter Controller
+ * QSPI Monitor Controller
 
 Boot options
 ------------
@@ -476,4 +506,4 @@ To boot a kernel directly from a Zephyr build tree:
 .. code-block:: bash
 
   $ qemu-system-arm -M ast1030-evb -nographic \
-        -kernel zephyr.elf
+        -kernel zephyr.bin

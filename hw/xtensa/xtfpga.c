@@ -30,15 +30,15 @@
 #include "qapi/error.h"
 #include "cpu.h"
 #include "system/system.h"
-#include "hw/boards.h"
-#include "hw/loader.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/boards.h"
+#include "hw/core/loader.h"
+#include "hw/core/qdev-properties.h"
 #include "elf.h"
 #include "system/memory.h"
 #include "exec/tswap.h"
 #include "hw/char/serial-mm.h"
 #include "net/net.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "hw/block/flash.h"
 #include "chardev/char.h"
 #include "system/device_tree.h"
@@ -49,6 +49,7 @@
 #include "bootparam.h"
 #include "xtensa_memory.h"
 #include "hw/xtensa/mx_pic.h"
+#include "exec/cpu-common.h"
 #include "migration/vmstate.h"
 
 typedef struct XtfpgaFlashDesc {
@@ -268,7 +269,7 @@ static void xtfpga_init(const XtfpgaBoardDesc *board, MachineState *machine)
         /* Need MMU initialized prior to ELF loading,
          * so that ELF gets loaded into virtual addresses
          */
-        cpu_reset(CPU(cpu));
+        reset_mmu(cenv);
     }
     if (smp_cpus > 1) {
         extints = xtensa_mx_pic_get_extints(mx_pic);
@@ -381,7 +382,8 @@ static void xtfpga_init(const XtfpgaBoardDesc *board, MachineState *machine)
             if (initrd_size < 0) {
                 initrd_size = load_image_targphys(initrd_filename,
                                                   cur_lowmem,
-                                                  lowmem_end - cur_lowmem);
+                                                  lowmem_end - cur_lowmem,
+                                                  NULL);
             }
             if (initrd_size < 0) {
                 error_report("could not load initrd '%s'", initrd_filename);

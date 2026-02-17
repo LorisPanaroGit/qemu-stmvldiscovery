@@ -14,8 +14,8 @@
 #include "qemu/units.h"
 #include "qemu/accel.h"
 #include "system/replay.h"
-#include "hw/boards.h"
-#include "hw/loader.h"
+#include "hw/core/boards.h"
+#include "hw/core/loader.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qapi/qapi-visit-machine.h"
@@ -35,9 +35,21 @@
 #include "hw/virtio/virtio-pci.h"
 #include "hw/virtio/virtio-net.h"
 #include "hw/virtio/virtio-iommu.h"
-#include "audio/audio.h"
+#include "hw/acpi/generic_event_device.h"
+#include "qemu/audio.h"
 
-GlobalProperty hw_compat_10_1[] = {};
+GlobalProperty hw_compat_10_2[] = {
+    { "scsi-block", "migrate-pr", "off" },
+};
+const size_t hw_compat_10_2_len = G_N_ELEMENTS(hw_compat_10_2);
+
+GlobalProperty hw_compat_10_1[] = {
+    { TYPE_ACPI_GED, "x-has-hest-addr", "false" },
+    { TYPE_VIRTIO_NET, "host_tunnel", "off" },
+    { TYPE_VIRTIO_NET, "host_tunnel_csum", "off" },
+    { TYPE_VIRTIO_NET, "guest_tunnel", "off" },
+    { TYPE_VIRTIO_NET, "guest_tunnel_csum", "off" },
+};
 const size_t hw_compat_10_1_len = G_N_ELEMENTS(hw_compat_10_1);
 
 GlobalProperty hw_compat_10_0[] = {
@@ -273,23 +285,6 @@ GlobalProperty hw_compat_2_8[] = {
     { "isa-cirrus-vga", "vgamem_mb", "8" },
 };
 const size_t hw_compat_2_8_len = G_N_ELEMENTS(hw_compat_2_8);
-
-GlobalProperty hw_compat_2_7[] = {
-    { "virtio-pci", "page-per-vq", "on" },
-    { "virtio-serial-device", "emergency-write", "off" },
-    { "ioapic", "version", "0x11" },
-    { "intel-iommu", "x-buggy-eim", "true" },
-    { "virtio-pci", "x-ignore-backend-features", "on" },
-};
-const size_t hw_compat_2_7_len = G_N_ELEMENTS(hw_compat_2_7);
-
-GlobalProperty hw_compat_2_6[] = {
-    { "virtio-mmio", "format_transport_address", "off" },
-    /* Optional because not all virtio-pci devices support legacy mode */
-    { "virtio-pci", "disable-modern", "on",  .optional = true },
-    { "virtio-pci", "disable-legacy", "off", .optional = true },
-};
-const size_t hw_compat_2_6_len = G_N_ELEMENTS(hw_compat_2_6);
 
 MachineState *current_machine;
 
@@ -645,9 +640,6 @@ static void machine_set_mem(Object *obj, Visitor *v, const char *name,
         mem->size = mc->default_ram_size;
     }
     mem->size = QEMU_ALIGN_UP(mem->size, 8192);
-    if (mc->fixup_ram_size) {
-        mem->size = mc->fixup_ram_size(mem->size);
-    }
     if ((ram_addr_t)mem->size != mem->size) {
         error_setg(errp, "ram size %llu exceeds permitted maximum %llu",
                    (unsigned long long)mem->size,
@@ -760,7 +752,7 @@ static void machine_set_audiodev(Object *obj, const char *value,
 {
     MachineState *ms = MACHINE(obj);
 
-    if (!audio_state_by_name(value, errp)) {
+    if (!audio_be_by_name(value, errp)) {
         return;
     }
 
@@ -1115,8 +1107,11 @@ static void machine_class_init(ObjectClass *oc, const void *data)
      * SMBIOS 3.1.0 7.18.5 Memory Device — Extended Size
      * use max possible value that could be encoded into
      * 'Extended Size' field (2047Tb).
+     *
+     * Unfortunately (current) Windows Server 2025 and earlier do not handle
+     * 4Tb+ DIMM size.
      */
-    mc->smbios_memory_device_size = 2047 * TiB;
+    mc->smbios_memory_device_size = 2 * TiB;
 
     /* numa node memory size aligned on 8MB by default.
      * On Linux, each node's border has to be 8MB aligned
@@ -1197,6 +1192,8 @@ static void machine_class_init(ObjectClass *oc, const void *data)
     object_class_property_add_bool(oc, "aux-ram-share",
                                    machine_get_aux_ram_share,
                                    machine_set_aux_ram_share);
+    object_class_property_set_description(oc, "aux-ram-share",
+        "Use anonymous shared memory for auxiliary guest RAMs");
 #endif
 
     object_class_property_add_bool(oc, "usb",
@@ -1553,6 +1550,16 @@ const char *machine_class_default_cpu_type(MachineClass *mc)
     return mc->default_cpu_type;
 }
 
+const char *machine_default_cpu_type(const MachineState *ms)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
+
+    if (mc->get_default_cpu_type) {
+        return mc->get_default_cpu_type(ms);
+    }
+    return machine_class_default_cpu_type(mc);
+}
+
 static bool is_cpu_type_supported(const MachineState *machine, Error **errp)
 {
     MachineClass *mc = MACHINE_GET_CLASS(machine);
@@ -1567,6 +1574,8 @@ static bool is_cpu_type_supported(const MachineState *machine, Error **errp)
      */
     if (mc->valid_cpu_types) {
         assert(mc->valid_cpu_types[0] != NULL);
+        assert(!mc->get_valid_cpu_types);
+
         for (i = 0; mc->valid_cpu_types[i]; i++) {
             if (object_class_dynamic_cast(oc, mc->valid_cpu_types[i])) {
                 break;
@@ -1593,6 +1602,32 @@ static bool is_cpu_type_supported(const MachineState *machine, Error **errp)
                 error_append_hint(errp, "\n");
             }
 
+            return false;
+        }
+    } else if (mc->get_valid_cpu_types) {
+        GPtrArray *vct = mc->get_valid_cpu_types(machine);
+        bool valid = false;
+
+        for (i = 0; i < vct->len; i++) {
+            if (object_class_dynamic_cast(oc, vct->pdata[i])) {
+                valid = true;
+                break;
+            }
+        }
+
+        if (!valid) {
+            g_autofree char *requested = cpu_model_from_type(machine->cpu_type);
+
+            error_setg(errp, "Invalid CPU model: %s", requested);
+            error_append_hint(errp, "The valid models are: ");
+            for (i = 0; i < vct->len; i++) {
+                g_autofree char *model = cpu_model_from_type(vct->pdata[i]);
+                error_append_hint(errp, "%s%s",
+                                  model, i + 1 == vct->len ? "\n" : ", ");
+            }
+        }
+        g_ptr_array_free(vct, true);
+        if (!valid) {
             return false;
         }
     }

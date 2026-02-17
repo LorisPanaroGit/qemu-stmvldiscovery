@@ -146,25 +146,8 @@ static void arm_kernel_cmpxchg64_helper(CPUARMState *env)
     /* Swap if host != guest endianness, for the host cmpxchg below */
     oldval = tswap64(oldval);
     newval = tswap64(newval);
-
-#ifdef CONFIG_ATOMIC64
-    val = qatomic_cmpxchg__nocheck(host_addr, oldval, newval);
+    val = qatomic_cmpxchg(host_addr, oldval, newval);
     cpsr = (val == oldval) * CPSR_C;
-#else
-    /*
-     * This only works between threads, not between processes, but since
-     * the host has no 64-bit cmpxchg, it is the best that we can do.
-     */
-    start_exclusive();
-    val = *host_addr;
-    if (val == oldval) {
-        *host_addr = newval;
-        cpsr = CPSR_C;
-    } else {
-        cpsr = 0;
-    }
-    end_exclusive();
-#endif
     mmap_unlock();
 
     cpsr_write(env, cpsr, CPSR_C, CPSRWriteByInstr);
@@ -295,7 +278,7 @@ void cpu_loop(CPUARMState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch(trapnr) {
         case EXCP_UDEF:

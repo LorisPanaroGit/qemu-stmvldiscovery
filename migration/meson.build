@@ -16,6 +16,7 @@ system_ss.add(files(
   'channel-block.c',
   'cpr.c',
   'cpr-transfer.c',
+  'cpr-exec.c',
   'cpu-throttle.c',
   'dirtyrate.c',
   'exec.c',
@@ -35,7 +36,6 @@ system_ss.add(files(
   'savevm.c',
   'socket.c',
   'tls.c',
-  'threadinfo.c',
 ), gnutls, zlib)
 
 if get_option('replication').allowed()

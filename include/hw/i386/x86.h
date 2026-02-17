@@ -20,7 +20,7 @@
 #include "exec/hwaddr.h"
 #include "system/memory.h"
 
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "hw/i386/topology.h"
 #include "hw/intc/ioapic.h"
 #include "hw/isa/isa.h"
@@ -30,8 +30,6 @@
 struct X86MachineClass {
     MachineClass parent;
 
-    /* use DMA capable linuxboot option rom */
-    bool fwcfg_dma_enabled;
     /* CPU and apic information: */
     bool apic_xrupt_override;
 };

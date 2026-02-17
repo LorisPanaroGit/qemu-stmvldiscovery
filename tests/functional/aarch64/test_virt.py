@@ -60,8 +60,7 @@ class Aarch64VirtMachine(QemuSystemTest):
 
 
     ASSET_KERNEL = Asset(
-        ('https://fileserver.linaro.org/s/'
-         'z6B2ARM7DQT3HWN/download'),
+        'https://share.linaro.org/downloadFile?id=3zGlbmXh8pXFewt',
         '12a54d4805cda6ab647cb7c7bbdb16fafb3df400e0d6f16445c1a0436100ef8d')
 
     def common_aarch64_virt(self, machine):
@@ -72,14 +71,12 @@ class Aarch64VirtMachine(QemuSystemTest):
         self.set_machine('virt')
         self.require_accelerator("tcg")
 
-        logger = logging.getLogger('aarch64_virt')
-
         kernel_path = self.ASSET_KERNEL.fetch()
 
         self.vm.set_console()
         kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
                                'console=ttyAMA0')
-        self.vm.add_args('-cpu', 'max,pauth-impdef=on',
+        self.vm.add_args('-cpu', 'max',
                          '-machine', machine,
                          '-accel', 'tcg',
                          '-kernel', kernel_path,
@@ -91,7 +88,7 @@ class Aarch64VirtMachine(QemuSystemTest):
                          'rng-random,id=rng0,filename=/dev/urandom')
 
         # Also add a scratch block device
-        logger.info('creating scratch qcow2 image')
+        self.log.info('creating scratch qcow2 image')
         image_path = self.scratch_file('scratch.qcow2')
         qemu_img = get_qemu_img(self)
         check_call([qemu_img, 'create', '-f', 'qcow2', image_path, '8M'],

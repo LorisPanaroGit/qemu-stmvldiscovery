@@ -19,15 +19,16 @@
 #include "system/runstate.h"
 #include "system/tcg.h"
 #include "elf.h"
-#include "hw/loader.h"
-#include "hw/qdev-properties.h"
-#include "hw/boards.h"
+#include "hw/core/loader.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/boards.h"
 #include "hw/s390x/virtio-ccw.h"
 #include "hw/s390x/vfio-ccw.h"
 #include "hw/s390x/css.h"
 #include "hw/s390x/ebcdic.h"
 #include "hw/scsi/scsi.h"
 #include "hw/virtio/virtio-net.h"
+#include "exec/cpu-common.h"
 #include "ipl.h"
 #include "qemu/error-report.h"
 #include "qemu/config-file.h"
@@ -169,7 +170,7 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
         } else {
             /* Try to load non-ELF file */
             bios_size = load_image_targphys(bios_filename, ZIPL_IMAGE_START,
-                                            4096);
+                                            4096, NULL);
             ipl->bios_start_addr = ZIPL_IMAGE_START;
         }
         g_free(bios_filename);
@@ -188,7 +189,8 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
                                &pentry, NULL,
                                NULL, NULL, ELFDATA2MSB, EM_S390, 0, 0);
         if (kernel_size < 0) {
-            kernel_size = load_image_targphys(ipl->kernel, 0, ms->ram_size);
+            kernel_size = load_image_targphys(ipl->kernel, 0, ms->ram_size,
+                                              NULL);
             if (kernel_size < 0) {
                 error_setg(errp, "could not load kernel '%s'", ipl->kernel);
                 return;
@@ -247,7 +249,8 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
                 initrd_offset += 0x100000;
             }
             initrd_size = load_image_targphys(ipl->initrd, initrd_offset,
-                                              ms->ram_size - initrd_offset);
+                                              ms->ram_size - initrd_offset,
+                                              NULL);
             if (initrd_size == -1) {
                 error_setg(errp, "could not load initrd '%s'", ipl->initrd);
                 return;

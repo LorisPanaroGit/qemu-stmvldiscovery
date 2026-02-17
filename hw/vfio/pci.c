@@ -23,12 +23,13 @@
 #include <linux/vfio.h>
 #include <sys/ioctl.h>
 
-#include "hw/hw.h"
+#include "hw/core/hw-error.h"
+#include "hw/core/iommu.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "hw/pci/pci_bridge.h"
-#include "hw/qdev-properties.h"
-#include "hw/qdev-properties-system.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/qdev-properties-system.h"
 #include "hw/vfio/vfio-cpr.h"
 #include "migration/vmstate.h"
 #include "migration/cpr.h"
@@ -305,7 +306,7 @@ static void vfio_intx_update(VFIOPCIDevice *vdev, PCIINTxRoute *route)
 
 static void vfio_intx_routing_notifier(PCIDevice *pdev)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     PCIINTxRoute route;
 
     if (vdev->interrupt != VFIO_INT_INTx) {
@@ -660,7 +661,7 @@ void vfio_pci_vector_init(VFIOPCIDevice *vdev, int nr)
 static int vfio_msix_vector_do_use(PCIDevice *pdev, unsigned int nr,
                                    MSIMessage *msg, IOHandler *handler)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     VFIOMSIVector *vector;
     int ret;
     bool resizing = !!(vdev->nr_vectors < nr + 1);
@@ -755,7 +756,7 @@ static int vfio_msix_vector_use(PCIDevice *pdev,
 
 static void vfio_msix_vector_release(PCIDevice *pdev, unsigned int nr)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     VFIOMSIVector *vector = &vdev->msi_vectors[nr];
 
     trace_vfio_msix_vector_release(vdev->vbasedev.name, nr);
@@ -1346,7 +1347,7 @@ static const MemoryRegionOps vfio_vga_ops = {
  */
 static void vfio_sub_page_bar_update_mapping(PCIDevice *pdev, int bar)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     VFIORegion *region = &vdev->bars[bar].region;
     MemoryRegion *mmap_mr, *region_mr, *base_mr;
     PCIIORegion *r;
@@ -1392,7 +1393,7 @@ static void vfio_sub_page_bar_update_mapping(PCIDevice *pdev, int bar)
  */
 uint32_t vfio_pci_read_config(PCIDevice *pdev, uint32_t addr, int len)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     VFIODevice *vbasedev = &vdev->vbasedev;
     uint32_t emu_bits = 0, emu_val = 0, phys_val = 0, val;
 
@@ -1426,7 +1427,7 @@ uint32_t vfio_pci_read_config(PCIDevice *pdev, uint32_t addr, int len)
 void vfio_pci_write_config(PCIDevice *pdev,
                            uint32_t addr, uint32_t val, int len)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     VFIODevice *vbasedev = &vdev->vbasedev;
     uint32_t val_le = cpu_to_le32(val);
     int ret;
@@ -2025,7 +2026,6 @@ static void vfio_bars_finalize(VFIOPCIDevice *vdev)
         vfio_region_finalize(&bar->region);
         if (bar->mr) {
             assert(bar->size);
-            object_unparent(OBJECT(bar->mr));
             g_free(bar->mr);
             bar->mr = NULL;
         }
@@ -2033,9 +2033,6 @@ static void vfio_bars_finalize(VFIOPCIDevice *vdev)
 
     if (vdev->vga) {
         vfio_vga_quirk_finalize(vdev);
-        for (i = 0; i < ARRAY_SIZE(vdev->vga->region); i++) {
-            object_unparent(OBJECT(&vdev->vga->region[i].mem));
-        }
         g_free(vdev->vga);
     }
 }
@@ -2502,9 +2499,62 @@ static int vfio_setup_rebar_ecap(VFIOPCIDevice *vdev, uint16_t pos)
     return 0;
 }
 
+/*
+ * Try to retrieve PASID capability information via IOMMUFD APIs and,
+ * if supported, synthesize a PASID PCIe extended capability for the
+ * VFIO device.
+ *
+ * Use user-specified PASID capability offset if provided, otherwise
+ * place it at the end of the PCIe extended configuration space.
+ */
+static bool vfio_pci_synthesize_pasid_cap(VFIOPCIDevice *vdev, Error **errp)
+{
+    HostIOMMUDevice *hiod = vdev->vbasedev.hiod;
+    HostIOMMUDeviceClass *hiodc;
+    PasidInfo pasid_info;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
+    uint16_t pasid_offset;
+
+    if (!hiod) {
+        return true;
+    }
+
+    hiodc = HOST_IOMMU_DEVICE_GET_CLASS(hiod);
+    if (!hiodc || !hiodc->get_pasid_info ||
+        !hiodc->get_pasid_info(hiod, &pasid_info) ||
+        !(pci_device_get_viommu_flags(pdev) & VIOMMU_FLAG_PASID_SUPPORTED)) {
+        return true;
+    }
+
+    /* Use user-specified offset if set, otherwise place PASID at the end. */
+    if (vdev->vpasid_cap_offset) {
+        pasid_offset = vdev->vpasid_cap_offset;
+    } else {
+        pasid_offset = PCIE_CONFIG_SPACE_SIZE - PCI_EXT_CAP_PASID_SIZEOF;
+    }
+
+    if (!pcie_insert_capability(pdev, PCI_EXT_CAP_ID_PASID, PCI_PASID_VER,
+                                pasid_offset, PCI_EXT_CAP_PASID_SIZEOF)) {
+        error_setg(errp, "vfio: Placing PASID capability at offset 0x%x failed",
+                   pasid_offset);
+        return false;
+    }
+    trace_vfio_pci_synthesize_pasid_cap(vdev->vbasedev.name, pasid_offset);
+
+    pcie_pasid_common_init(pdev, pasid_offset, pasid_info.max_pasid_log2,
+                           pasid_info.exec_perm, pasid_info.priv_mod);
+
+    /* PASID capability is fully emulated by QEMU */
+    memset(vdev->emulated_config_bits + pdev->exp.pasid_cap, 0xff,
+           PCI_EXT_CAP_PASID_SIZEOF);
+    return true;
+}
+
 static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
 {
     PCIDevice *pdev = PCI_DEVICE(vdev);
+    bool pasid_cap_added = false;
+    Error *err = NULL;
     uint32_t header;
     uint16_t cap_id, next, size;
     uint8_t cap_ver;
@@ -2582,10 +2632,22 @@ static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
                 pcie_add_capability(pdev, cap_id, cap_ver, next, size);
             }
             break;
+        /*
+         * VFIO kernel does not expose the PASID CAP today. We may synthesize
+         * one later through IOMMUFD APIs. If VFIO ever starts exposing it,
+         * record its presence here so we do not create a duplicate CAP.
+         */
+        case PCI_EXT_CAP_ID_PASID:
+            pasid_cap_added = true;
+            /* fallthrough */
         default:
             pcie_add_capability(pdev, cap_id, cap_ver, next, size);
         }
 
+    }
+
+    if (!pasid_cap_added && !vfio_pci_synthesize_pasid_cap(vdev, &err)) {
+        error_report_err(err);
     }
 
     /* Cleanup chain head ID if necessary */
@@ -2825,8 +2887,8 @@ static int vfio_pci_save_config(VFIODevice *vbasedev, QEMUFile *f, Error **errp)
 {
     VFIOPCIDevice *vdev = container_of(vbasedev, VFIOPCIDevice, vbasedev);
 
-    return vmstate_save_state_with_err(f, &vmstate_vfio_pci_config, vdev, NULL,
-                                       errp);
+    return vmstate_save_state(f, &vmstate_vfio_pci_config, vdev, NULL,
+                              errp);
 }
 
 static int vfio_pci_load_config(VFIODevice *vbasedev, QEMUFile *f)
@@ -2835,13 +2897,16 @@ static int vfio_pci_load_config(VFIODevice *vbasedev, QEMUFile *f)
     PCIDevice *pdev = PCI_DEVICE(vdev);
     pcibus_t old_addr[PCI_NUM_REGIONS - 1];
     int bar, ret;
+    Error *local_err = NULL;
 
     for (bar = 0; bar < PCI_ROM_SLOT; bar++) {
         old_addr[bar] = pdev->io_regions[bar].addr;
     }
 
-    ret = vmstate_load_state(f, &vmstate_vfio_pci_config, vdev, 1);
+    ret = vmstate_load_state(f, &vmstate_vfio_pci_config, vdev, 1,
+                             &local_err);
     if (ret) {
+        error_report_err(local_err);
         return ret;
     }
 
@@ -2976,9 +3041,9 @@ bool vfio_pci_populate_device(VFIOPCIDevice *vdev, Error **errp)
         return false;
     }
 
-    if (vbasedev->num_regions < VFIO_PCI_CONFIG_REGION_INDEX + 1) {
+    if (vbasedev->num_initial_regions < VFIO_PCI_CONFIG_REGION_INDEX + 1) {
         error_setg(errp, "unexpected number of io regions %u",
-                   vbasedev->num_regions);
+                   vbasedev->num_initial_regions);
         return false;
     }
 
@@ -3396,7 +3461,7 @@ bool vfio_pci_interrupt_setup(VFIOPCIDevice *vdev, Error **errp)
 static void vfio_pci_realize(PCIDevice *pdev, Error **errp)
 {
     ERRP_GUARD();
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     VFIODevice *vbasedev = &vdev->vbasedev;
     int i;
     char uuid[UUID_STR_LEN];
@@ -3554,16 +3619,16 @@ error:
     error_prepend(errp, VFIO_MSG_PREFIX, vbasedev->name);
 }
 
-static void vfio_instance_finalize(Object *obj)
+static void vfio_pci_finalize(Object *obj)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
 
     vfio_pci_put_device(vdev);
 }
 
 static void vfio_exitfn(PCIDevice *pdev)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
     VFIODevice *vbasedev = &vdev->vbasedev;
 
     vfio_unregister_req_notifier(vdev);
@@ -3587,7 +3652,7 @@ static void vfio_exitfn(PCIDevice *pdev)
 
 static void vfio_pci_reset(DeviceState *dev)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(dev);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(dev);
 
     /* Do not reset the device during qemu_system_reset prior to cpr load */
     if (cpr_is_incoming()) {
@@ -3629,10 +3694,10 @@ post_reset:
     vfio_pci_post_reset(vdev);
 }
 
-static void vfio_instance_init(Object *obj)
+static void vfio_pci_init(Object *obj)
 {
     PCIDevice *pci_dev = PCI_DEVICE(obj);
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
     VFIODevice *vbasedev = &vdev->vbasedev;
 
     device_add_bootindex_property(obj, &vdev->bootindex,
@@ -3660,7 +3725,7 @@ static void vfio_instance_init(Object *obj)
     pci_dev->cap_present |= QEMU_PCI_SKIP_RESET_ON_CPR;
 }
 
-static void vfio_pci_base_dev_class_init(ObjectClass *klass, const void *data)
+static void vfio_pci_device_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(klass);
@@ -3672,12 +3737,12 @@ static void vfio_pci_base_dev_class_init(ObjectClass *klass, const void *data)
     pdc->config_write = vfio_pci_write_config;
 }
 
-static const TypeInfo vfio_pci_base_dev_info = {
-    .name = TYPE_VFIO_PCI_BASE,
+static const TypeInfo vfio_pci_device_info = {
+    .name = TYPE_VFIO_PCI_DEVICE,
     .parent = TYPE_PCI_DEVICE,
     .instance_size = sizeof(VFIOPCIDevice),
     .abstract = true,
-    .class_init = vfio_pci_base_dev_class_init,
+    .class_init = vfio_pci_device_class_init,
     .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_PCIE_DEVICE },
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
@@ -3687,7 +3752,7 @@ static const TypeInfo vfio_pci_base_dev_info = {
 
 static PropertyInfo vfio_pci_migration_multifd_transfer_prop;
 
-static const Property vfio_pci_dev_properties[] = {
+static const Property vfio_pci_properties[] = {
     DEFINE_PROP_PCI_HOST_DEVADDR("host", VFIOPCIDevice, host),
     DEFINE_PROP_UUID_NODEFAULT("vf-token", VFIOPCIDevice, vf_token),
     DEFINE_PROP_STRING("sysfsdev", VFIOPCIDevice, vbasedev.sysfsdev),
@@ -3757,23 +3822,25 @@ static const Property vfio_pci_dev_properties[] = {
                      TYPE_IOMMUFD_BACKEND, IOMMUFDBackend *),
 #endif
     DEFINE_PROP_BOOL("skip-vsc-check", VFIOPCIDevice, skip_vsc_check, true),
+    DEFINE_PROP_UINT16("x-vpasid-cap-offset", VFIOPCIDevice,
+                       vpasid_cap_offset, 0),
 };
 
 #ifdef CONFIG_IOMMUFD
 static void vfio_pci_set_fd(Object *obj, const char *str, Error **errp)
 {
-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
+    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
     vfio_device_set_fd(&vdev->vbasedev, str, errp);
 }
 #endif
 
-static void vfio_pci_dev_class_init(ObjectClass *klass, const void *data)
+static void vfio_pci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(klass);
 
     device_class_set_legacy_reset(dc, vfio_pci_reset);
-    device_class_set_props(dc, vfio_pci_dev_properties);
+    device_class_set_props(dc, vfio_pci_properties);
 #ifdef CONFIG_IOMMUFD
     object_class_property_add_str(klass, "fd", NULL, vfio_pci_set_fd);
 #endif
@@ -3872,7 +3939,7 @@ static void vfio_pci_dev_class_init(ObjectClass *klass, const void *data)
                                           "(DEBUG)");
     object_class_property_set_description(klass, /* 5.2, 8.0 non-experimetal */
                                           "enable-migration",
-                                          "Enale device migration. Also requires a host VFIO PCI "
+                                          "Enable device migration. Also requires a host VFIO PCI "
                                           "variant or mdev driver with migration support enabled");
     object_class_property_set_description(klass, /* 8.1 */
                                           "vf-token",
@@ -3914,17 +3981,24 @@ static void vfio_pci_dev_class_init(ObjectClass *klass, const void *data)
                                           "destination when doing live "
                                           "migration of device state via "
                                           "multifd channels");
+   object_class_property_set_description(klass, /* 11.0 */
+                                          "x-vpasid-cap-offset",
+                                          "PCIe extended configuration space offset at which to place a "
+                                          "synthetic PASID extended capability when PASID is enabled via "
+                                          "a vIOMMU. A value of 0 (default) places the capability at the "
+                                          "end of the extended configuration space. The offset must be "
+                                          "4-byte aligned and within the PCIe extended configuration space");
 }
 
-static const TypeInfo vfio_pci_dev_info = {
+static const TypeInfo vfio_pci_info = {
     .name = TYPE_VFIO_PCI,
-    .parent = TYPE_VFIO_PCI_BASE,
-    .class_init = vfio_pci_dev_class_init,
-    .instance_init = vfio_instance_init,
-    .instance_finalize = vfio_instance_finalize,
+    .parent = TYPE_VFIO_PCI_DEVICE,
+    .class_init = vfio_pci_class_init,
+    .instance_init = vfio_pci_init,
+    .instance_finalize = vfio_pci_finalize,
 };
 
-static const Property vfio_pci_dev_nohotplug_properties[] = {
+static const Property vfio_pci_nohotplug_properties[] = {
     DEFINE_PROP_BOOL("ramfb", VFIOPCIDevice, enable_ramfb, false),
     DEFINE_PROP_BOOL("use-legacy-x86-rom", VFIOPCIDevice,
                      use_legacy_x86_rom, false),
@@ -3932,12 +4006,12 @@ static const Property vfio_pci_dev_nohotplug_properties[] = {
                             ON_OFF_AUTO_AUTO),
 };
 
-static void vfio_pci_nohotplug_dev_class_init(ObjectClass *klass,
+static void vfio_pci_nohotplug_class_init(ObjectClass *klass,
                                               const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    device_class_set_props(dc, vfio_pci_dev_nohotplug_properties);
+    device_class_set_props(dc, vfio_pci_nohotplug_properties);
     dc->hotpluggable = false;
 
     object_class_property_set_description(klass, /* 3.1 */
@@ -3953,11 +4027,11 @@ static void vfio_pci_nohotplug_dev_class_init(ObjectClass *klass,
                                           "Controls loading of a legacy VGA BIOS ROM");
 }
 
-static const TypeInfo vfio_pci_nohotplug_dev_info = {
+static const TypeInfo vfio_pci_nohotplug_info = {
     .name = TYPE_VFIO_PCI_NOHOTPLUG,
     .parent = TYPE_VFIO_PCI,
     .instance_size = sizeof(VFIOPCIDevice),
-    .class_init = vfio_pci_nohotplug_dev_class_init,
+    .class_init = vfio_pci_nohotplug_class_init,
 };
 
 static void register_vfio_pci_dev_type(void)
@@ -3973,9 +4047,9 @@ static void register_vfio_pci_dev_type(void)
     vfio_pci_migration_multifd_transfer_prop = qdev_prop_on_off_auto;
     vfio_pci_migration_multifd_transfer_prop.realized_set_allowed = true;
 
-    type_register_static(&vfio_pci_base_dev_info);
-    type_register_static(&vfio_pci_dev_info);
-    type_register_static(&vfio_pci_nohotplug_dev_info);
+    type_register_static(&vfio_pci_device_info);
+    type_register_static(&vfio_pci_info);
+    type_register_static(&vfio_pci_nohotplug_info);
 }
 
 type_init(register_vfio_pci_dev_type)

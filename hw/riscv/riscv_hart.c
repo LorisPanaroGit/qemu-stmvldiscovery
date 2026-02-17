@@ -24,9 +24,9 @@
 #include "system/reset.h"
 #include "system/qtest.h"
 #include "qemu/cutils.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "target/riscv/cpu.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/riscv/riscv_hart.h"
 #include "qemu/error-report.h"
 
@@ -78,7 +78,7 @@ static void csr_call(char *cmd, uint64_t cpu_num, int csrno, uint64_t *val)
     g_assert(ret == RISCV_EXCP_NONE);
 }
 
-static bool csr_qtest_callback(CharBackend *chr, gchar **words)
+static bool csr_qtest_callback(CharFrontend *chr, gchar **words)
 {
     if (strcmp(words[0], "csr") == 0) {
 
@@ -94,7 +94,7 @@ static bool csr_qtest_callback(CharBackend *chr, gchar **words)
         g_assert(rc == 0);
         csr_call(words[1], cpu, csr, &val);
 
-        qtest_sendf(chr, "OK 0 "TARGET_FMT_lx"\n", (target_ulong)val);
+        qtest_sendf(chr, "OK 0 %"PRIx64"\n", val);
 
         return true;
     }

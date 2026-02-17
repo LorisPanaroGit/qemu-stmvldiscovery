@@ -41,9 +41,9 @@
 #include <usbredirparser.h>
 #include <usbredirfilter.h>
 
-#include "hw/qdev-properties.h"
-#include "hw/qdev-properties-system.h"
-#include "hw/usb.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/qdev-properties-system.h"
+#include "hw/usb/usb.h"
 #include "migration/qemu-file-types.h"
 #include "migration/vmstate.h"
 #include "qom/object.h"
@@ -113,7 +113,7 @@ struct PacketIdQueue {
 struct USBRedirDevice {
     USBDevice dev;
     /* Properties */
-    CharBackend cs;
+    CharFrontend cs;
     bool enable_streams;
     bool suppress_remote_wake;
     bool in_write;

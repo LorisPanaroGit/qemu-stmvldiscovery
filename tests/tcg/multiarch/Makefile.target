@@ -46,6 +46,8 @@ vma-pthread: LDFLAGS+=-pthread
 sigreturn-sigmask: CFLAGS+=-pthread
 sigreturn-sigmask: LDFLAGS+=-pthread
 
+tb-link: LDFLAGS+=-lpthread
+
 # GCC versions 12/13/14/15 at least incorrectly complain about
 # "'SHA1Transform' reading 64 bytes from a region of size 0"; see the gcc bug
 # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=106709
@@ -200,8 +202,13 @@ run-plugin-test-plugin-mem-access-with-libmem.so: \
 	CHECK_PLUGIN_OUTPUT_COMMAND= \
 	$(SRC_PATH)/tests/tcg/multiarch/check-plugin-output.sh \
 	$(QEMU) $<
+run-plugin-test-plugin-syscall-filter-with-libsyscall.so:
 
-EXTRA_RUNS_WITH_PLUGIN += run-plugin-test-plugin-mem-access-with-libmem.so
+EXTRA_RUNS_WITH_PLUGIN += run-plugin-test-plugin-mem-access-with-libmem.so \
+			  run-plugin-test-plugin-syscall-filter-with-libsyscall.so
+else
+# test-plugin-syscall-filter needs syscall plugin to succeed
+test-plugin-syscall-filter: CFLAGS+=-DSKIP
 endif
 
 # Update TESTS

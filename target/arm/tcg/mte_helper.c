@@ -21,12 +21,13 @@
 #include "qemu/log.h"
 #include "cpu.h"
 #include "internals.h"
+#include "exec/target_page.h"
 #include "exec/page-protection.h"
 #ifdef CONFIG_USER_ONLY
 #include "user/cpu_loop.h"
 #include "user/page-protection.h"
 #else
-#include "system/ram_addr.h"
+#include "system/physmem.h"
 #endif
 #include "accel/tcg/cpu-ldst.h"
 #include "accel/tcg/probe.h"
@@ -188,7 +189,7 @@ uint8_t *allocation_tag_mem_probe(CPUARMState *env, int ptr_mmu_idx,
      */
     if (tag_access == MMU_DATA_STORE) {
         ram_addr_t tag_ra = memory_region_get_ram_addr(mr) + xlat;
-        cpu_physical_memory_set_dirty_flag(tag_ra, DIRTY_MEMORY_MIGRATION);
+        physical_memory_set_dirty_flag(tag_ra, DIRTY_MEMORY_MIGRATION);
     }
 
     return memory_region_get_ram_ptr(mr) + xlat;
@@ -544,7 +545,7 @@ void HELPER(stzgm_tags)(CPUARMState *env, uint64_t ptr, uint64_t val)
      * i.e. 32 bytes, which is an unreasonably small dcz anyway,
      * to make sure that we can access one complete tag byte here.
      */
-    log2_dcz_bytes = env_archcpu(env)->dcz_blocksize + 2;
+    log2_dcz_bytes = get_dczid_bs(env_archcpu(env)) + 2;
     log2_tag_bytes = log2_dcz_bytes - (LOG2_TAG_GRANULE + 1);
     dcz_bytes = (intptr_t)1 << log2_dcz_bytes;
     tag_bytes = (intptr_t)1 << log2_tag_bytes;
@@ -591,7 +592,7 @@ static void mte_async_check_fail(CPUARMState *env, uint64_t dirty_ptr,
      * which is rather sooner than "normal".  But the alternative
      * is waiting until the next syscall.
      */
-    qemu_cpu_kick(env_cpu(env));
+    cpu_exit(env_cpu(env));
 #endif
 }
 
@@ -604,7 +605,7 @@ void mte_check_fail(CPUARMState *env, uint32_t desc,
     int el, reg_el, tcf;
     uint64_t sctlr;
 
-    reg_el = regime_el(env, arm_mmu_idx);
+    reg_el = regime_el(arm_mmu_idx);
     sctlr = env->cp15.sctlr_el[reg_el];
 
     switch (arm_mmu_idx) {
@@ -944,7 +945,7 @@ uint64_t HELPER(mte_check_zva)(CPUARMState *env, uint32_t desc, uint64_t ptr)
      * i.e. 32 bytes, which is an unreasonably small dcz anyway, to make
      * sure that we can access one complete tag byte here.
      */
-    log2_dcz_bytes = env_archcpu(env)->dcz_blocksize + 2;
+    log2_dcz_bytes = get_dczid_bs(env_archcpu(env)) + 2;
     log2_tag_bytes = log2_dcz_bytes - (LOG2_TAG_GRANULE + 1);
     dcz_bytes = (intptr_t)1 << log2_dcz_bytes;
     tag_bytes = (intptr_t)1 << log2_tag_bytes;

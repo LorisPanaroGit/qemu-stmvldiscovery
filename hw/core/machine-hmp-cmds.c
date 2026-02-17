@@ -24,7 +24,7 @@
 #include "qapi/string-output-visitor.h"
 #include "qemu/error-report.h"
 #include "system/numa.h"
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 
 void hmp_info_cpus(Monitor *mon, const QDict *qdict)
 {
@@ -161,6 +161,24 @@ void hmp_info_kvm(Monitor *mon, const QDict *qdict)
     }
 
     qapi_free_KvmInfo(info);
+}
+
+void hmp_info_accelerators(Monitor *mon, const QDict *qdict)
+{
+    AcceleratorInfo *info;
+    AcceleratorList *accel;
+
+    info = qmp_query_accelerators(NULL);
+    for (accel = info->present; accel; accel = accel->next) {
+        char trail = accel->next ? ' ' : '\n';
+        if (info->enabled == accel->value) {
+            monitor_printf(mon, "[%s]%c", Accelerator_str(accel->value), trail);
+        } else {
+            monitor_printf(mon, "%s%c", Accelerator_str(accel->value), trail);
+        }
+    }
+
+    qapi_free_AcceleratorInfo(info);
 }
 
 void hmp_info_uuid(Monitor *mon, const QDict *qdict)

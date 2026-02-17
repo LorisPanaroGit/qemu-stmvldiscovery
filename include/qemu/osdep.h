@@ -141,6 +141,12 @@ QEMU_EXTERN_C int daemon(int, int);
 #undef ELF_DATA
 #undef ELF_ARCH
 
+/*
+ * Avoid conflict with Solaris FSCALE definition from <sys/param.h> header,
+ * but we might as well do this unconditionally.
+ */
+#undef FSCALE
+
 #ifdef CONFIG_IOVEC
 #include <sys/uio.h>
 #endif
@@ -560,8 +566,8 @@ int madvise(char *, size_t, int);
 #endif
 
 #if defined(__linux__) && \
-    (defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) \
-     || defined(__powerpc64__))
+    (defined(__x86_64__) || defined(__aarch64__) \
+     || defined(__powerpc64__) || defined(__riscv))
    /* Use 2 MiB alignment so transparent hugepages can be used by KVM.
       Valgrind does not support alignments larger than 1 MiB,
       therefore we need special code which handles running on Valgrind. */
@@ -631,9 +637,7 @@ bool qemu_has_ofd_lock(void);
 
 bool qemu_has_direct_io(void);
 
-#if defined(__HAIKU__) && defined(__i386__)
-#define FMT_pid "%ld"
-#elif defined(WIN64)
+#ifdef WIN64
 #define FMT_pid "%" PRId64
 #else
 #define FMT_pid "%d"
@@ -687,6 +691,16 @@ ssize_t qemu_write_full(int fd, const void *buf, size_t count)
     G_GNUC_WARN_UNUSED_RESULT;
 
 void qemu_set_cloexec(int fd);
+bool qemu_set_blocking(int fd, bool block, Error **errp);
+
+/*
+ * Clear FD_CLOEXEC for a descriptor.
+ *
+ * The caller must guarantee that no other fork+exec's occur before the
+ * exec that is intended to inherit this descriptor, eg by suspending CPUs
+ * and blocking monitor commands.
+ */
+void qemu_clear_cloexec(int fd);
 
 /* Return a dynamically allocated directory path that is appropriate for storing
  * local state.

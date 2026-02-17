@@ -12,7 +12,7 @@
 #include "hw/pci/pci.h"
 #include "qapi/error.h"
 #include "io/channel-util.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "monitor/monitor.h"
 #include "migration/blocker.h"
 #include "qemu/sockets.h"
@@ -112,8 +112,12 @@ static void pci_proxy_dev_realize(PCIDevice *device, Error **errp)
         return;
     }
 
+    if (!qio_channel_set_blocking(dev->ioc, true, errp)) {
+        object_unref(dev->ioc);
+        return;
+    }
+
     qemu_mutex_init(&dev->io_mutex);
-    qio_channel_set_blocking(dev->ioc, true, NULL);
 
     pci_conf[PCI_LATENCY_TIMER] = 0xff;
     pci_conf[PCI_INTERRUPT_PIN] = 0x01;

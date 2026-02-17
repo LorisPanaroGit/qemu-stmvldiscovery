@@ -145,6 +145,7 @@ unsigned long guest_stack_size = TARGET_DEFAULT_STACK_SIZE;
 void fork_start(void)
 {
     start_exclusive();
+    clone_fork_start();
     mmap_fork_start();
     cpu_list_lock();
     qemu_plugin_user_prefork_lock();
@@ -174,6 +175,7 @@ void fork_end(pid_t pid)
         cpu_list_unlock();
     }
     gdbserver_fork_end(thread_cpu, pid);
+    clone_fork_end(child);
     /*
      * qemu_init_cpu_list() reinitialized the child exclusive state, but we
      * also need to keep current_cpu consistent, so call end_exclusive() for
@@ -187,11 +189,6 @@ __thread CPUState *thread_cpu;
 bool qemu_cpu_is_self(CPUState *cpu)
 {
     return thread_cpu == cpu;
-}
-
-void qemu_cpu_kick(CPUState *cpu)
-{
-    cpu_exit(cpu);
 }
 
 void task_settid(TaskState *ts)
@@ -233,6 +230,8 @@ void init_task_state(TaskState *ts)
         ts->start_boottime += bt.tv_nsec * (uint64_t) ticks_per_sec /
                               NANOSECONDS_PER_SECOND;
     }
+
+    ts->sys_dispatch_len = -1;
 }
 
 CPUArchState *cpu_copy(CPUArchState *env)

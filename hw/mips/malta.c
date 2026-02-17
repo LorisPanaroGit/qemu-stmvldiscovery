@@ -29,12 +29,12 @@
 #include "qemu/cutils.h"
 #include "qemu/guest-random.h"
 #include "exec/tswap.h"
-#include "hw/clock.h"
+#include "hw/core/clock.h"
 #include "hw/southbridge/piix.h"
 #include "hw/isa/superio.h"
 #include "hw/char/serial-mm.h"
 #include "net/net.h"
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/block/flash.h"
 #include "hw/mips/mips.h"
@@ -43,11 +43,11 @@
 #include "hw/pci/pci_bus.h"
 #include "qemu/log.h"
 #include "hw/ide/pci.h"
-#include "hw/irq.h"
-#include "hw/loader.h"
+#include "hw/core/irq.h"
+#include "hw/core/loader.h"
 #include "elf.h"
 #include "qom/object.h"
-#include "hw/sysbus.h"             /* SysBusDevice */
+#include "hw/core/sysbus.h"             /* SysBusDevice */
 #include "qemu/host-utils.h"
 #include "system/qtest.h"
 #include "system/reset.h"
@@ -58,7 +58,7 @@
 #include "system/kvm.h"
 #include "semihosting/semihost.h"
 #include "hw/mips/cps.h"
-#include "hw/qdev-clock.h"
+#include "hw/core/qdev-clock.h"
 #include "target/mips/internal.h"
 #include "trace.h"
 #include "cpu.h"
@@ -89,7 +89,7 @@ typedef struct {
     uint32_t i2coe;
     uint32_t i2cout;
     uint32_t i2csel;
-    CharBackend display;
+    CharFrontend display;
     char display_text[9];
     SerialMM *uart;
     bool display_inited;
@@ -892,7 +892,7 @@ static uint64_t load_kernel(void)
     initrd_size = 0;
     initrd_offset = 0;
     if (loaderparams.initrd_filename) {
-        initrd_size = get_image_size(loaderparams.initrd_filename);
+        initrd_size = get_image_size(loaderparams.initrd_filename, NULL);
         if (initrd_size > 0) {
             /*
              * The kernel allocates the bootmap memory in the low memory after
@@ -908,8 +908,9 @@ static uint64_t load_kernel(void)
                 exit(1);
             }
             initrd_size = load_image_targphys(loaderparams.initrd_filename,
-                                              initrd_offset,
-                                              loaderparams.ram_size - initrd_offset);
+                                        initrd_offset,
+                                        loaderparams.ram_size - initrd_offset,
+                                        NULL);
         }
         if (initrd_size == (target_ulong) -1) {
             error_report("could not load initial ram disk '%s'",
@@ -1176,7 +1177,7 @@ void mips_malta_init(MachineState *machine)
                                       machine->firmware ?: bios_name);
             if (filename) {
                 bios_size = load_image_targphys(filename, FLASH_ADDRESS,
-                                                BIOS_SIZE);
+                                                BIOS_SIZE, NULL);
                 g_free(filename);
             } else {
                 bios_size = -1;

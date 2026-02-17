@@ -36,7 +36,7 @@ void cpu_loop(CPUHexagonState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case EXCP_INTERRUPT:
@@ -63,6 +63,11 @@ void cpu_loop(CPUHexagonState *env)
         case HEX_CAUSE_PC_NOT_ALIGNED:
             force_sig_fault(TARGET_SIGBUS, TARGET_BUS_ADRALN,
                             env->gpr[HEX_REG_R31]);
+            break;
+        case HEX_CAUSE_INVALID_PACKET:
+        case HEX_CAUSE_REG_WRITE_CONFLICT:
+            force_sig_fault(TARGET_SIGILL, TARGET_ILL_ILLOPC,
+                            env->gpr[HEX_REG_PC]);
             break;
         case EXCP_ATOMIC:
             cpu_exec_step_atomic(cs);

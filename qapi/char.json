@@ -197,11 +197,15 @@
 # @logappend: true to append instead of truncate (default to false to
 #     truncate)
 #
+# @logtimestamp: true to insert timestamps into logfile
+#     (default false) (since 11.0)
+#
 # Since: 2.6
 ##
 { 'struct': 'ChardevCommon',
   'data': { '*logfile': 'str',
-            '*logappend': 'bool' } }
+            '*logappend': 'bool',
+            '*logtimestamp': 'bool' } }
 
 ##
 # @ChardevFile:
@@ -269,21 +273,10 @@
 # @websocket: enable websocket protocol on server sockets
 #     (default: false) (Since: 3.1)
 #
-# @reconnect: For a client socket, if a socket is disconnected, then
-#     attempt a reconnect after the given number of seconds.  Setting
-#     this to zero disables this function.  The use of this member is
-#     deprecated, use @reconnect-ms instead.  (default: 0) (Since: 2.2)
-#
 # @reconnect-ms: For a client socket, if a socket is disconnected,
 #     then attempt a reconnect after the given number of milliseconds.
-#     Setting this to zero disables this function.  This member is
-#     mutually exclusive with @reconnect.
+#     Setting this to zero disables this function.
 #     (default: 0) (Since: 9.2)
-#
-# Features:
-#
-# @deprecated: Member @reconnect is deprecated.  Use @reconnect-ms
-#     instead.
 #
 # Since: 1.4
 ##
@@ -297,7 +290,6 @@
             '*telnet': 'bool',
             '*tn3270': 'bool',
             '*websocket': 'bool',
-            '*reconnect': { 'type': 'int', 'features': [ 'deprecated' ] },
             '*reconnect-ms': 'int' },
   'base': 'ChardevCommon' }
 
@@ -692,7 +684,6 @@
 ##
 { 'struct': 'ChardevRingbufWrapper',
   'data': { 'data': 'ChardevRingbuf' } }
-
 
 ##
 # @ChardevPtyWrapper:

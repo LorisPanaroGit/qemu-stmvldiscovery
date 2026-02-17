@@ -12,22 +12,23 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/arm/boot.h"
+#include "hw/arm/machines-qom.h"
 #include "net/net.h"
 #include "system/system.h"
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "hw/char/serial-mm.h"
 #include "qemu/timer.h"
-#include "hw/ptimer.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/ptimer.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/block/flash.h"
 #include "ui/console.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/bitbang_i2c.h"
-#include "hw/irq.h"
-#include "hw/or-irq.h"
+#include "hw/core/irq.h"
+#include "hw/core/or-irq.h"
 #include "hw/audio/wm8750.h"
 #include "system/block-backend.h"
 #include "system/runstate.h"
@@ -36,7 +37,7 @@
 #include "qemu/cutils.h"
 #include "qom/object.h"
 #include "hw/net/mv88w8618_eth.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "qemu/error-report.h"
 #include "target/arm/cpu-qom.h"
 
@@ -1346,7 +1347,7 @@ static void musicpal_machine_init(MachineClass *mc)
     machine_add_audiodev_property(mc);
 }
 
-DEFINE_MACHINE("musicpal", musicpal_machine_init)
+DEFINE_MACHINE_ARM("musicpal", musicpal_machine_init)
 
 static void mv88w8618_wlan_class_init(ObjectClass *klass, const void *data)
 {

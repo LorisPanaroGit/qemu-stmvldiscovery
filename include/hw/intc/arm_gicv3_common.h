@@ -24,7 +24,7 @@
 #ifndef HW_ARM_GICV3_COMMON_H
 #define HW_ARM_GICV3_COMMON_H
 
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "hw/intc/arm_gic_common.h"
 #include "qom/object.h"
 #include "qemu/notify.h"
@@ -166,6 +166,9 @@ struct GICv3CPUState {
     uint64_t icc_igrpen[3];
     uint64_t icc_ctlr_el3;
 
+    /* For KVM, cached copy of the kernel reset value of ICC_CTLR_EL1 */
+    uint64_t kvm_reset_icc_ctlr_el1;
+
     /* Virtualization control interface */
     uint64_t ich_apr[3][4]; /* ich_apr[GICV3_G1][x] never used */
     uint64_t ich_hcr_el2;
@@ -229,6 +232,7 @@ struct GICv3State {
     uint32_t *redist_region_count; /* redistributor count within each region */
     uint32_t nb_redist_regions; /* number of redist regions */
 
+    uint32_t first_cpu_idx;
     uint32_t num_cpu;
     uint32_t num_irq;
     uint32_t revision;
@@ -308,6 +312,9 @@ GICV3_BITMAP_ACCESSORS(nmi)
 typedef struct ARMGICv3CommonClass ARMGICv3CommonClass;
 DECLARE_OBJ_CHECKERS(GICv3State, ARMGICv3CommonClass,
                      ARM_GICV3_COMMON, TYPE_ARM_GICV3_COMMON)
+
+/* Types for GICv3 kernel-irqchip */
+#define TYPE_WHPX_GICV3 "whpx-arm-gicv3"
 
 struct ARMGICv3CommonClass {
     /*< private >*/

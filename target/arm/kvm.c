@@ -22,6 +22,7 @@
 #include "qapi/error.h"
 #include "system/system.h"
 #include "system/runstate.h"
+#include "system/ramblock.h"
 #include "system/kvm.h"
 #include "system/kvm_int.h"
 #include "kvm_arm.h"
@@ -33,8 +34,8 @@
 #include "exec/memattrs.h"
 #include "system/address-spaces.h"
 #include "gdbstub/enums.h"
-#include "hw/boards.h"
-#include "hw/irq.h"
+#include "hw/core/boards.h"
+#include "hw/core/irq.h"
 #include "qapi/visitor.h"
 #include "qemu/log.h"
 #include "hw/acpi/acpi.h"
@@ -324,6 +325,7 @@ static bool kvm_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf)
         err = 0;
     } else {
         err |= get_host_cpu_reg(fd, ahcf, ID_AA64PFR1_EL1_IDX);
+        err |= get_host_cpu_reg(fd, ahcf, ID_AA64PFR2_EL1_IDX);
         err |= get_host_cpu_reg(fd, ahcf, ID_AA64SMFR0_EL1_IDX);
         err |= get_host_cpu_reg(fd, ahcf, ID_AA64DFR0_EL1_IDX);
         err |= get_host_cpu_reg(fd, ahcf, ID_AA64DFR1_EL1_IDX);
@@ -718,17 +720,6 @@ void kvm_arm_register_device(MemoryRegion *mr, uint64_t devid, uint64_t group,
     memory_region_ref(kd->mr);
 }
 
-static int compare_u64(const void *a, const void *b)
-{
-    if (*(uint64_t *)a > *(uint64_t *)b) {
-        return 1;
-    }
-    if (*(uint64_t *)a < *(uint64_t *)b) {
-        return -1;
-    }
-    return 0;
-}
-
 /*
  * cpreg_values are sorted in ascending order by KVM register ID
  * (see kvm_arm_init_cpreg_list). This allows us to cheaply find
@@ -900,6 +891,58 @@ bool write_kvmstate_to_list(ARMCPU *cpu)
     return ok;
 }
 
+/* pretty-print a KVM register */
+#define CP_REG_ARM64_SYSREG_OP(_reg, _op)                       \
+    ((uint8_t)((_reg & CP_REG_ARM64_SYSREG_ ## _op ## _MASK) >> \
+               CP_REG_ARM64_SYSREG_ ## _op ## _SHIFT))
+
+static gchar *kvm_print_sve_register_name(uint64_t regidx)
+{
+    uint16_t sve_reg = regidx & 0x000000000000ffff;
+
+    if (regidx == KVM_REG_ARM64_SVE_VLS) {
+        return g_strdup_printf("SVE VLS");
+    }
+    /* zreg, preg, ffr */
+    switch (sve_reg & 0xfc00) {
+    case 0:
+        return g_strdup_printf("SVE zreg n:%d slice:%d",
+                               (sve_reg & 0x03e0) >> 5, sve_reg & 0x001f);
+    case 0x04:
+        return g_strdup_printf("SVE preg n:%d slice:%d",
+                               (sve_reg & 0x01e0) >> 5, sve_reg & 0x001f);
+    case 0x06:
+        return g_strdup_printf("SVE ffr slice:%d", sve_reg & 0x001f);
+    default:
+        return g_strdup_printf("SVE ???");
+    }
+}
+
+static gchar *kvm_print_register_name(uint64_t regidx)
+{
+        switch ((regidx & KVM_REG_ARM_COPROC_MASK)) {
+        case KVM_REG_ARM_CORE:
+            return g_strdup_printf("core reg %"PRIx64, regidx);
+        case KVM_REG_ARM_DEMUX:
+            return g_strdup_printf("demuxed reg %"PRIx64, regidx);
+        case KVM_REG_ARM64_SYSREG:
+            return g_strdup_printf("op0:%d op1:%d crn:%d crm:%d op2:%d",
+                                   CP_REG_ARM64_SYSREG_OP(regidx, OP0),
+                                   CP_REG_ARM64_SYSREG_OP(regidx, OP1),
+                                   CP_REG_ARM64_SYSREG_OP(regidx, CRN),
+                                   CP_REG_ARM64_SYSREG_OP(regidx, CRM),
+                                   CP_REG_ARM64_SYSREG_OP(regidx, OP2));
+        case KVM_REG_ARM_FW:
+            return g_strdup_printf("fw reg %d", (int)(regidx & 0xffff));
+        case KVM_REG_ARM64_SVE:
+            return kvm_print_sve_register_name(regidx);
+        case KVM_REG_ARM_FW_FEAT_BMAP:
+            return g_strdup_printf("fw feat reg %d", (int)(regidx & 0xffff));
+        default:
+            return g_strdup_printf("%"PRIx64, regidx);
+        }
+}
+
 bool write_list_to_kvmstate(ARMCPU *cpu, int level)
 {
     CPUState *cs = CPU(cpu);
@@ -927,11 +970,45 @@ bool write_list_to_kvmstate(ARMCPU *cpu, int level)
             g_assert_not_reached();
         }
         if (ret) {
+            gchar *reg_str = kvm_print_register_name(regidx);
+
             /* We might fail for "unknown register" and also for
              * "you tried to set a register which is constant with
              * a different value from what it actually contains".
              */
             ok = false;
+            switch (ret) {
+            case -ENOENT:
+                error_report("Could not set register %s: unknown to KVM",
+                             reg_str);
+                break;
+            case -EINVAL:
+                if ((regidx & KVM_REG_SIZE_MASK) == KVM_REG_SIZE_U32) {
+                    if (!kvm_get_one_reg(cs, regidx, &v32)) {
+                        error_report("Could not set register %s to %x (is %x)",
+                                     reg_str, (uint32_t)cpu->cpreg_values[i],
+                                     v32);
+                    } else {
+                        error_report("Could not set register %s to %x",
+                                     reg_str, (uint32_t)cpu->cpreg_values[i]);
+                    }
+                } else /* U64 */ {
+                    uint64_t v64;
+
+                    if (!kvm_get_one_reg(cs, regidx, &v64)) {
+                        error_report("Could not set register %s to %"PRIx64" (is %"PRIx64")",
+                                     reg_str, cpu->cpreg_values[i], v64);
+                    } else {
+                        error_report("Could not set register %s to %"PRIx64,
+                                     reg_str, cpu->cpreg_values[i]);
+                    }
+                }
+                break;
+            default:
+                error_report("Could not set register %s: %s",
+                             reg_str, strerror(-ret));
+            }
+            g_free(reg_str);
         }
     }
     return ok;
@@ -1544,26 +1621,42 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
         return 0;
     }
 
+    /*
+     * We do have an IOMMU address space, but for some vIOMMU implementations
+     * (e.g. accelerated SMMUv3) the translation tables are programmed into
+     * the physical SMMUv3 in the host (nested S1=guest, S2=host). QEMU cannot
+     * walk these tables in a safe way, so in that case we obtain the MSI
+     * doorbell GPA directly from the vIOMMU backend and ignore the gIOVA
+     * @address.
+     */
+    if (pci_device_iommu_msi_direct_gpa(dev, &doorbell_gpa)) {
+        goto set_doorbell;
+    }
+
     /* MSI doorbell address is translated by an IOMMU */
 
-    RCU_READ_LOCK_GUARD();
+    rcu_read_lock();
 
     mr = address_space_translate(as, address, &xlat, &len, true,
                                  MEMTXATTRS_UNSPECIFIED);
 
     if (!mr) {
+        rcu_read_unlock();
         return 1;
     }
 
     mrs = memory_region_find(mr, xlat, 1);
 
     if (!mrs.mr) {
+        rcu_read_unlock();
         return 1;
     }
 
     doorbell_gpa = mrs.offset_within_address_space;
     memory_region_unref(mrs.mr);
+    rcu_read_unlock();
 
+set_doorbell:
     route->u.msi.address_lo = doorbell_gpa;
     route->u.msi.address_hi = doorbell_gpa >> 32;
 
@@ -2047,7 +2140,7 @@ static int kvm_arch_put_sve(CPUState *cs)
     return 0;
 }
 
-int kvm_arch_put_registers(CPUState *cs, int level, Error **errp)
+int kvm_arch_put_registers(CPUState *cs, KvmPutState level, Error **errp)
 {
     uint64_t val;
     uint32_t fpr;
@@ -2357,10 +2450,12 @@ void kvm_arch_on_sigbus_vcpu(CPUState *c, int code, void *addr)
 {
     ram_addr_t ram_addr;
     hwaddr paddr;
+    AcpiGhesState *ags;
 
     assert(code == BUS_MCEERR_AR || code == BUS_MCEERR_AO);
 
-    if (acpi_ghes_present() && addr) {
+    ags = acpi_ghes_get_state();
+    if (ags && addr) {
         ram_addr = qemu_ram_addr_from_host(addr);
         if (ram_addr != RAM_ADDR_INVALID &&
             kvm_physical_memory_addr_from_host(c->kvm_state, addr, &paddr)) {
@@ -2378,12 +2473,9 @@ void kvm_arch_on_sigbus_vcpu(CPUState *c, int code, void *addr)
              */
             if (code == BUS_MCEERR_AR) {
                 kvm_cpu_synchronize_state(c);
-                if (!acpi_ghes_memory_errors(ACPI_HEST_SRC_ID_SEA, paddr)) {
-                    kvm_inject_arm_sea(c);
-                } else {
-                    error_report("failed to record the error");
-                    abort();
-                }
+                acpi_ghes_memory_errors(ags, ACPI_HEST_SRC_ID_SYNC,
+                                        paddr, &error_fatal);
+                kvm_inject_arm_sea(c);
             }
             return;
         }
@@ -2487,4 +2579,25 @@ void arm_cpu_kvm_set_irq(void *arm_cpu, int irq, int level)
         env->irq_line_state &= ~linestate_bit;
     }
     kvm_arm_set_irq(cs->cpu_index, KVM_ARM_IRQ_TYPE_CPU, irq_id, !!level);
+}
+
+void arm_gic_cap_kvm_probe(GICCapability *v2, GICCapability *v3)
+{
+    int fdarray[3];
+
+    if (!kvm_arm_create_scratch_host_vcpu(fdarray, NULL)) {
+        return;
+    }
+
+    /* Test KVM GICv2 */
+    if (kvm_device_supported(fdarray[1], KVM_DEV_TYPE_ARM_VGIC_V2)) {
+        v2->kernel = true;
+    }
+
+    /* Test KVM GICv3 */
+    if (kvm_device_supported(fdarray[1], KVM_DEV_TYPE_ARM_VGIC_V3)) {
+        v3->kernel = true;
+    }
+
+    kvm_arm_destroy_scratch_host_vcpu(fdarray);
 }

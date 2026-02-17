@@ -19,9 +19,9 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/cutils.h"
-#include "hw/qdev-core.h"
-#include "hw/qdev-properties.h"
-#include "hw/qdev-properties-system.h"
+#include "hw/core/qdev.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/qdev-properties-system.h"
 #include "hw/virtio/vhost.h"
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-bus.h"
@@ -41,8 +41,8 @@ vhost_vdpa_device_get_u32(int fd, unsigned long int cmd, Error **errp)
     uint32_t val = (uint32_t)-1;
 
     if (ioctl(fd, cmd, &val) < 0) {
-        error_setg(errp, "vhost-vdpa-device: cmd 0x%lx failed: %s",
-                   cmd, strerror(errno));
+        error_setg_errno(errp, errno, "vhost-vdpa-device: cmd 0x%lx failed",
+                         cmd);
     }
 
     return val;
@@ -338,6 +338,12 @@ static int vhost_vdpa_device_set_status(VirtIODevice *vdev, uint8_t status)
     return 0;
 }
 
+static struct vhost_dev *vhost_vdpa_device_get_vhost(VirtIODevice *vdev)
+{
+    VhostVdpaDevice *s = VHOST_VDPA_DEVICE(vdev);
+    return &s->dev;
+}
+
 static const Property vhost_vdpa_device_properties[] = {
     DEFINE_PROP_STRING("vhostdev", VhostVdpaDevice, vhostdev),
     DEFINE_PROP_UINT16("queue-size", VhostVdpaDevice, queue_size, 0),
@@ -369,6 +375,7 @@ static void vhost_vdpa_device_class_init(ObjectClass *klass, const void *data)
     vdc->set_config = vhost_vdpa_device_set_config;
     vdc->get_features = vhost_vdpa_device_get_features;
     vdc->set_status = vhost_vdpa_device_set_status;
+    vdc->get_vhost = vhost_vdpa_device_get_vhost;
 }
 
 static void vhost_vdpa_device_instance_init(Object *obj)

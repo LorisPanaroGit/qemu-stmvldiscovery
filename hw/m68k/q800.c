@@ -27,13 +27,13 @@
 #include "exec/target_page.h"
 #include "system/system.h"
 #include "cpu.h"
-#include "hw/boards.h"
-#include "hw/or-irq.h"
+#include "hw/core/boards.h"
+#include "hw/core/or-irq.h"
 #include "elf.h"
-#include "hw/loader.h"
+#include "hw/core/loader.h"
 #include "ui/console.h"
 #include "hw/char/escc.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "hw/scsi/esp.h"
 #include "standard-headers/asm-m68k/bootinfo.h"
 #include "standard-headers/asm-m68k/bootinfo-mac.h"
@@ -629,7 +629,7 @@ static void q800_machine_init(MachineState *machine)
 
         /* load initrd */
         if (initrd_filename) {
-            initrd_size = get_image_size(initrd_filename);
+            initrd_size = get_image_size(initrd_filename, NULL);
             if (initrd_size < 0) {
                 error_report("could not load initial ram disk '%s'",
                              initrd_filename);
@@ -638,7 +638,7 @@ static void q800_machine_init(MachineState *machine)
 
             initrd_base = (ram_size - initrd_size) & TARGET_PAGE_MASK;
             load_image_targphys(initrd_filename, initrd_base,
-                                ram_size - initrd_base);
+                                ram_size - initrd_base, NULL);
             BOOTINFO2(param_ptr, BI_RAMDISK, initrd_base,
                       initrd_size);
         } else {
@@ -668,7 +668,8 @@ static void q800_machine_init(MachineState *machine)
 
         /* Load MacROM binary */
         if (filename) {
-            bios_size = load_image_targphys(filename, MACROM_ADDR, MACROM_SIZE);
+            bios_size = load_image_targphys(filename, MACROM_ADDR, MACROM_SIZE,
+                                            NULL);
             g_free(filename);
         } else {
             bios_size = -1;

@@ -22,8 +22,8 @@
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "hw/pci/pci.h"
-#include "hw/qdev-properties.h"
-#include "hw/qdev-properties-system.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/qdev-properties-system.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "system/kvm.h"
@@ -94,7 +94,7 @@ struct IVShmemState {
 
     /* exactly one of these two may be set */
     HostMemoryBackend *hostmem; /* with interrupts */
-    CharBackend server_chr; /* without interrupts */
+    CharFrontend server_chr; /* without interrupts */
 
     /* registers */
     uint32_t intrmask;
@@ -540,7 +540,12 @@ static void process_msg_connect(IVShmemState *s, uint16_t posn, int fd,
 
     IVSHMEM_DPRINTF("eventfds[%d][%d] = %d\n", posn, vector, fd);
     event_notifier_init_fd(&peer->eventfds[vector], fd);
-    g_unix_set_fd_nonblocking(fd, true, NULL); /* msix/irqfd poll non block */
+
+    /* msix/irqfd poll non block */
+    if (!qemu_set_blocking(fd, false, errp)) {
+        close(fd);
+        return;
+    }
 
     if (posn == s->vm_id) {
         setup_interrupt(s, vector, errp);
@@ -868,10 +873,11 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
         host_memory_backend_set_mapped(s->hostmem, true);
     } else {
         Chardev *chr = qemu_chr_fe_get_driver(&s->server_chr);
-        assert(chr);
+        g_autofree char *filename = NULL;
 
-        IVSHMEM_DPRINTF("using shared memory server (socket = %s)\n",
-                        chr->filename);
+        assert(chr);
+        filename = qemu_chr_get_filename(chr);
+        IVSHMEM_DPRINTF("using shared memory server (socket = %s)\n", filename);
 
         /* we allocate enough space for 16 peers and grow as needed */
         resize_peers(s, 16);

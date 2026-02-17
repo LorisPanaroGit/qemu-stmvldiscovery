@@ -1181,60 +1181,32 @@ static bool ldst_whole_trans(uint32_t vd, uint32_t rs1, uint32_t nf,
      * Update vstart with the number of processed elements.
      * Use the helper function if either:
      * - vstart is not 0.
-     * - the target has 32 bit registers and we are loading/storing 64 bit long
-     *   elements. This is to ensure that we process every element with a single
-     *   memory instruction.
      */
 
-    bool use_helper_fn = !(s->vstart_eq_zero) ||
-                          (TCG_TARGET_REG_BITS == 32 && log2_esz == 3);
+    bool use_helper_fn = !s->vstart_eq_zero;
 
     if (!use_helper_fn) {
-        TCGv addr = tcg_temp_new();
         uint32_t size = s->cfg_ptr->vlenb * nf;
         TCGv_i64 t8 = tcg_temp_new_i64();
-        TCGv_i32 t4 = tcg_temp_new_i32();
         MemOp atomicity = MO_ATOM_NONE;
         if (log2_esz == 0) {
             atomicity = MO_ATOM_NONE;
         } else {
             atomicity = MO_ATOM_IFALIGN_PAIR;
         }
-        if (TCG_TARGET_REG_BITS == 64) {
-            for (int i = 0; i < size; i += 8) {
-                addr = get_address(s, rs1, i);
-                if (is_load) {
-                    tcg_gen_qemu_ld_i64(t8, addr, s->mem_idx,
-                            MO_LE | MO_64 | atomicity);
-                    tcg_gen_st_i64(t8, tcg_env, vreg_ofs(s, vd) + i);
-                } else {
-                    tcg_gen_ld_i64(t8, tcg_env, vreg_ofs(s, vd) + i);
-                    tcg_gen_qemu_st_i64(t8, addr, s->mem_idx,
-                            MO_LE | MO_64 | atomicity);
-                }
-                if (i == size - 8) {
-                    tcg_gen_movi_tl(cpu_vstart, 0);
-                } else {
-                    tcg_gen_addi_tl(cpu_vstart, cpu_vstart, 8 >> log2_esz);
-                }
+        for (int i = 0; i < size; i += 8) {
+            TCGv addr = get_address(s, rs1, i);
+            if (is_load) {
+                tcg_gen_qemu_ld_i64(t8, addr, s->mem_idx, MO_LEUQ | atomicity);
+                tcg_gen_st_i64(t8, tcg_env, vreg_ofs(s, vd) + i);
+            } else {
+                tcg_gen_ld_i64(t8, tcg_env, vreg_ofs(s, vd) + i);
+                tcg_gen_qemu_st_i64(t8, addr, s->mem_idx, MO_LEUQ | atomicity);
             }
-        } else {
-            for (int i = 0; i < size; i += 4) {
-                addr = get_address(s, rs1, i);
-                if (is_load) {
-                    tcg_gen_qemu_ld_i32(t4, addr, s->mem_idx,
-                            MO_LE | MO_32 | atomicity);
-                    tcg_gen_st_i32(t4, tcg_env, vreg_ofs(s, vd) + i);
-                } else {
-                    tcg_gen_ld_i32(t4, tcg_env, vreg_ofs(s, vd) + i);
-                    tcg_gen_qemu_st_i32(t4, addr, s->mem_idx,
-                            MO_LE | MO_32 | atomicity);
-                }
-                if (i == size - 4) {
-                    tcg_gen_movi_tl(cpu_vstart, 0);
-                } else {
-                    tcg_gen_addi_tl(cpu_vstart, cpu_vstart, 4 >> log2_esz);
-                }
+            if (i == size - 8) {
+                tcg_gen_movi_tl(cpu_vstart, 0);
+            } else {
+                tcg_gen_addi_tl(cpu_vstart, cpu_vstart, 8 >> log2_esz);
             }
         }
     } else {
@@ -1489,7 +1461,7 @@ static void tcg_gen_gvec_rsubs(unsigned vece, uint32_t dofs, uint32_t aofs,
           .fniv = gen_rsub_vec,
           .fno = gen_helper_vec_rsubs64,
           .opt_opc = vecop_list,
-          .prefer_i64 = TCG_TARGET_REG_BITS == 64,
+          .prefer_i64 = true,
           .vece = MO_64 },
     };
 
@@ -3351,19 +3323,19 @@ static void load_element(TCGv_i64 dest, TCGv_ptr base,
 /* offset of the idx element with base register r */
 static uint32_t endian_ofs(DisasContext *s, int r, int idx)
 {
-#if HOST_BIG_ENDIAN
-    return vreg_ofs(s, r) + ((idx ^ (7 >> s->sew)) << s->sew);
-#else
-    return vreg_ofs(s, r) + (idx << s->sew);
-#endif
+    if (HOST_BIG_ENDIAN) {
+        return vreg_ofs(s, r) + ((idx ^ (7 >> s->sew)) << s->sew);
+    } else {
+        return vreg_ofs(s, r) + (idx << s->sew);
+    }
 }
 
 /* adjust the index according to the endian */
 static void endian_adjust(TCGv_i32 ofs, int sew)
 {
-#if HOST_BIG_ENDIAN
-    tcg_gen_xori_i32(ofs, ofs, 7 >> sew);
-#endif
+    if (HOST_BIG_ENDIAN) {
+        tcg_gen_xori_i32(ofs, ofs, 7 >> sew);
+    }
 }
 
 /* Load idx >= VLMAX ? 0 : vreg[idx] */
@@ -3561,7 +3533,6 @@ static bool slideup_check(DisasContext *s, arg_rmrr *a)
 }
 
 GEN_OPIVX_TRANS(vslideup_vx, slideup_check)
-GEN_OPIVX_TRANS(vslide1up_vx, slideup_check)
 GEN_OPIVI_TRANS(vslideup_vi, IMM_ZX, vslideup_vx, slideup_check)
 
 static bool slidedown_check(DisasContext *s, arg_rmrr *a)
@@ -3572,8 +3543,55 @@ static bool slidedown_check(DisasContext *s, arg_rmrr *a)
 }
 
 GEN_OPIVX_TRANS(vslidedown_vx, slidedown_check)
-GEN_OPIVX_TRANS(vslide1down_vx, slidedown_check)
 GEN_OPIVI_TRANS(vslidedown_vi, IMM_ZX, vslidedown_vx, slidedown_check)
+
+typedef void gen_helper_vslide1_vx(TCGv_ptr, TCGv_ptr, TCGv_i64, TCGv_ptr,
+                                TCGv_env, TCGv_i32);
+
+#define GEN_OPIVX_VSLIDE1_TRANS(NAME, CHECK)                            \
+static bool trans_##NAME(DisasContext *s, arg_rmrr *a)                  \
+{                                                                       \
+    if (CHECK(s, a)) {                                                  \
+        static gen_helper_vslide1_vx * const fns[4] = {                 \
+            gen_helper_##NAME##_b, gen_helper_##NAME##_h,               \
+            gen_helper_##NAME##_w, gen_helper_##NAME##_d,               \
+        };                                                              \
+                                                                        \
+        TCGv_ptr dest, src2, mask;                                      \
+        TCGv_i64 src1;                                                  \
+        TCGv_i32 desc;                                                  \
+        uint32_t data = 0;                                              \
+                                                                        \
+        dest = tcg_temp_new_ptr();                                      \
+        mask = tcg_temp_new_ptr();                                      \
+        src2 = tcg_temp_new_ptr();                                      \
+        src1 = tcg_temp_new_i64();                                      \
+                                                                        \
+        data = FIELD_DP32(data, VDATA, VM, a->vm);                      \
+        data = FIELD_DP32(data, VDATA, LMUL, s->lmul);                  \
+        data = FIELD_DP32(data, VDATA, VTA, s->vta);                    \
+        data = FIELD_DP32(data, VDATA, VTA_ALL_1S, s->cfg_vta_all_1s);  \
+        data = FIELD_DP32(data, VDATA, VMA, s->vma);                    \
+        desc = tcg_constant_i32(simd_desc(s->cfg_ptr->vlenb,            \
+                                s->cfg_ptr->vlenb, data));              \
+                                                                        \
+        tcg_gen_addi_ptr(dest, tcg_env, vreg_ofs(s, a->rd));            \
+        tcg_gen_addi_ptr(src2, tcg_env, vreg_ofs(s, a->rs2));           \
+        tcg_gen_addi_ptr(mask, tcg_env, vreg_ofs(s, 0));                \
+        tcg_gen_ext_tl_i64(src1, get_gpr(s, a->rs1, EXT_SIGN));         \
+                                                                        \
+        fns[s->sew](dest, mask, src1, src2, tcg_env, desc);             \
+                                                                        \
+        tcg_gen_movi_tl(cpu_vstart, 0);                                 \
+        finalize_rvv_inst(s);                                           \
+                                                                        \
+        return true;                                                    \
+    }                                                                   \
+    return false;                                                       \
+}
+
+GEN_OPIVX_VSLIDE1_TRANS(vslide1up_vx, slideup_check)
+GEN_OPIVX_VSLIDE1_TRANS(vslide1down_vx, slidedown_check)
 
 /* Vector Floating-Point Slide Instructions */
 static bool fslideup_check(DisasContext *s, arg_rmrr *a)

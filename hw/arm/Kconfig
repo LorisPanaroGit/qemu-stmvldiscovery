@@ -543,6 +543,7 @@ config ASPEED_SOC
     bool
     default y
     depends on TCG && ARM
+    imply PCI_DEVICES
     select DS1338
     select FTGMAC100
     select I2C
@@ -563,6 +564,8 @@ config ASPEED_SOC
     select MAX31785
     select FSI_APB2OPB_ASPEED
     select AT24C
+    select PCI_EXPRESS
+    select PCI_EXPRESS_ASPEED
 
 config MPS2
     bool
@@ -621,11 +624,17 @@ config FSL_IMX8MP
 config FSL_IMX8MP_EVK
     bool
     default y
-    depends on TCG && AARCH64
+    depends on AARCH64
+    depends on TCG
     select FSL_IMX8MP
+
+config ARM_SMMUV3_ACCEL
+    bool
+    depends on ARM_SMMUV3
 
 config ARM_SMMUV3
     bool
+    select ARM_SMMUV3_ACCEL if IOMMUFD
 
 config FSL_IMX6UL
     bool
@@ -636,6 +645,7 @@ config FSL_IMX6UL
     select IMX
     select IMX_FEC
     select IMX_I2C
+    select IMX_USBPHY
     select WDT_IMX2
     select SDHCI
     select USB_CHIPIDEA

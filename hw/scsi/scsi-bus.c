@@ -4,7 +4,7 @@
 #include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/hw-version.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/scsi/scsi.h"
 #include "migration/qemu-file-types.h"
 #include "migration/vmstate.h"
@@ -393,6 +393,7 @@ static void scsi_qdev_realize(DeviceState *qdev, Error **errp)
     }
 
     qemu_mutex_init(&dev->requests_lock);
+    qemu_mutex_init(&dev->pr_state.mutex);
     QTAILQ_INIT(&dev->requests);
     scsi_device_realize(dev, &local_err);
     if (local_err) {
@@ -416,6 +417,8 @@ static void scsi_qdev_unrealize(DeviceState *qdev)
     qemu_mutex_destroy(&dev->requests_lock);
 
     scsi_device_unrealize(dev);
+
+    qemu_mutex_destroy(&dev->pr_state.mutex);
 
     blockdev_mark_auto_del(dev->conf.blk);
 }
@@ -823,7 +826,6 @@ SCSIRequest *scsi_req_alloc(const SCSIReqOps *reqops, SCSIDevice *d,
 {
     SCSIRequest *req;
     SCSIBus *bus = scsi_bus_from_device(d);
-    BusState *qbus = BUS(bus);
     const int memset_off = offsetof(SCSIRequest, sense)
                            + sizeof(req->sense);
 
@@ -838,8 +840,6 @@ SCSIRequest *scsi_req_alloc(const SCSIReqOps *reqops, SCSIDevice *d,
     req->status = -1;
     req->host_status = -1;
     req->ops = reqops;
-    object_ref(OBJECT(d));
-    object_ref(OBJECT(qbus->parent));
     notifier_list_init(&req->cancel_notifiers);
 
     if (reqops->init_req) {
@@ -1496,15 +1496,15 @@ void scsi_device_report_change(SCSIDevice *dev, SCSISense sense)
 
 SCSIRequest *scsi_req_ref(SCSIRequest *req)
 {
-    assert(req->refcount > 0);
-    req->refcount++;
+    assert(qatomic_read(&req->refcount) > 0);
+    qatomic_inc(&req->refcount);
     return req;
 }
 
 void scsi_req_unref(SCSIRequest *req)
 {
-    assert(req->refcount > 0);
-    if (--req->refcount == 0) {
+    assert(qatomic_read(&req->refcount) > 0);
+    if (qatomic_fetch_dec(&req->refcount) == 1) {
         BusState *qbus = req->dev->qdev.parent_bus;
         SCSIBus *bus = DO_UPCAST(SCSIBus, qbus, qbus);
 
@@ -1514,8 +1514,6 @@ void scsi_req_unref(SCSIRequest *req)
         if (req->ops->free_req) {
             req->ops->free_req(req);
         }
-        object_unref(OBJECT(req->dev));
-        object_unref(OBJECT(qbus->parent));
         g_free(req);
     }
 }

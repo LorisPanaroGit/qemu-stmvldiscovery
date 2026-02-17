@@ -35,7 +35,7 @@ void cpu_loop(CPUAlphaState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case EXCP_RESET:
@@ -94,11 +94,6 @@ void cpu_loop(CPUAlphaState *env)
                 break;
             case 0x86:
                 /* IMB */
-                /* ??? We can probably elide the code using page_unprotect
-                   that is checking for self-modifying code.  Instead we
-                   could simply call tb_flush here.  Until we work out the
-                   changes required to turn off the extra write protection,
-                   this can be a no-op.  */
                 break;
             case 0x9E:
                 /* RDUNIQUE */

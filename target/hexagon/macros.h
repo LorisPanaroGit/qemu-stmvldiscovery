@@ -83,7 +83,7 @@
  */
 #define CHECK_NOSHUF(VA, SIZE) \
     do { \
-        if (insn->slot == 0 && ctx->pkt->pkt_has_store_s1) { \
+        if (insn->slot == 0 && ctx->pkt->pkt_has_scalar_store_s1) { \
             probe_noshuf_load(VA, SIZE, ctx->mem_idx); \
             process_store(ctx, 1); \
         } \
@@ -94,11 +94,11 @@
         TCGLabel *noshuf_label = gen_new_label(); \
         tcg_gen_brcondi_tl(TCG_COND_EQ, PRED, 0, noshuf_label); \
         GET_EA; \
-        if (insn->slot == 0 && ctx->pkt->pkt_has_store_s1) { \
+        if (insn->slot == 0 && ctx->pkt->pkt_has_scalar_store_s1) { \
             probe_noshuf_load(EA, SIZE, ctx->mem_idx); \
         } \
         gen_set_label(noshuf_label); \
-        if (insn->slot == 0 && ctx->pkt->pkt_has_store_s1) { \
+        if (insn->slot == 0 && ctx->pkt->pkt_has_scalar_store_s1) { \
             process_store(ctx, 1); \
         } \
     } while (0)
@@ -519,13 +519,13 @@ static inline TCGv gen_read_ireg(TCGv result, TCGv val, int shift)
 #define fLOAD(NUM, SIZE, SIGN, EA, DST) MEM_LOAD##SIZE##SIGN(DST, EA)
 #else
 #define MEM_LOAD1 cpu_ldub_data_ra
-#define MEM_LOAD2 cpu_lduw_data_ra
-#define MEM_LOAD4 cpu_ldl_data_ra
-#define MEM_LOAD8 cpu_ldq_data_ra
+#define MEM_LOAD2 cpu_lduw_le_data_ra
+#define MEM_LOAD4 cpu_ldl_le_data_ra
+#define MEM_LOAD8 cpu_ldq_le_data_ra
 
 #define fLOAD(NUM, SIZE, SIGN, EA, DST) \
     do { \
-        check_noshuf(env, pkt_has_store_s1, slot, EA, SIZE, GETPC()); \
+        check_noshuf(env, pkt_has_scalar_store_s1, slot, EA, SIZE, GETPC()); \
         DST = (size##SIZE##SIGN##_t)MEM_LOAD##SIZE(env, EA, GETPC()); \
     } while (0)
 #endif

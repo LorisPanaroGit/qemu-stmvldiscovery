@@ -766,9 +766,9 @@ static gboolean gd_render_event(GtkGLArea *area, GdkGLContext *context,
 }
 
 static void gd_resize_event(GtkGLArea *area,
-                            gint width, gint height, gpointer *opaque)
+                            gint width, gint height, gpointer opaque)
 {
-    VirtualConsole *vc = (void *)opaque;
+    VirtualConsole *vc = opaque;
     double pw = width, ph = height;
     double sx = vc->gfx.scale_x, sy = vc->gfx.scale_y;
     GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(area));
@@ -1181,6 +1181,7 @@ static gboolean gd_touch_event(GtkWidget *widget, GdkEventTouch *touch,
                                void *opaque)
 {
     VirtualConsole *vc = opaque;
+    Error *err = NULL;
     uint64_t num_slot = GPOINTER_TO_UINT(touch->sequence);
     int type = -1;
 
@@ -1196,14 +1197,17 @@ static gboolean gd_touch_event(GtkWidget *widget, GdkEventTouch *touch,
         type = INPUT_MULTI_TOUCH_TYPE_END;
         break;
     default:
-        warn_report("gtk: unexpected touch event type\n");
+        warn_report("gtk: unexpected touch event type");
         return FALSE;
     }
 
     console_handle_touch_event(vc->gfx.dcl.con, touch_slots,
                                num_slot, surface_width(vc->gfx.ds),
                                surface_height(vc->gfx.ds), touch->x,
-                               touch->y, type, &error_warn);
+                               touch->y, type, &err);
+    if (err) {
+        warn_report_err(err);
+    }
     return TRUE;
 }
 
@@ -1959,29 +1963,27 @@ static void gd_vc_chr_set_echo(Chardev *chr, bool echo)
 
 static int nb_vcs;
 static Chardev *vcs[MAX_VCS];
-static void gd_vc_open(Chardev *chr,
-                       ChardevBackend *backend,
-                       bool *be_opened,
-                       Error **errp)
+static bool gd_vc_chr_open(Chardev *chr, ChardevBackend *backend, Error **errp)
 {
     if (nb_vcs == MAX_VCS) {
         error_setg(errp, "Maximum number of consoles reached");
-        return;
+        return false;
     }
 
     vcs[nb_vcs++] = chr;
 
-    /* console/chardev init sometimes completes elsewhere in a 2nd
+    /*
+     * console/chardev init sometimes completes elsewhere in a 2nd
      * stage, so defer OPENED events until they are fully initialized
      */
-    *be_opened = false;
+    return true;
 }
 
 static void char_gd_vc_class_init(ObjectClass *oc, const void *data)
 {
     ChardevClass *cc = CHARDEV_CLASS(oc);
 
-    cc->open = gd_vc_open;
+    cc->chr_open = gd_vc_chr_open;
     cc->chr_write = gd_vc_chr_write;
     cc->chr_accept_input = gd_vc_chr_accept_input;
     cc->chr_set_echo = gd_vc_chr_set_echo;

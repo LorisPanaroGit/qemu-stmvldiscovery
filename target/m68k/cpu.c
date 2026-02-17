@@ -176,7 +176,7 @@ static void m68k_cpu_reset_hold(Object *obj, ResetType type)
     env->pc = 0;
 }
 
-static void m68k_cpu_disas_set_info(CPUState *s, disassemble_info *info)
+static void m68k_cpu_disas_set_info(const CPUState *cs, disassemble_info *info)
 {
     info->print_insn = print_insn_m68k;
     info->endian = BFD_ENDIAN_BIG;
@@ -235,7 +235,7 @@ static void m68010_cpu_initfn(Object *obj)
 
 /*
  * Adds BFCHG, BFCLR, BFEXTS, BFEXTU, BFFFO, BFINS, BFSET, BFTST, CAS, CAS2,
- *      CHK2, CMP2, DIVSL, DIVUL, EXTB, PACK, TRAPcc, UNPK.
+ *      CHK2, CMP2, DIVSL, DIVUL, EXTB, LINKL, PACK, TRAPcc, UNPK.
  *
  * 68020/30 only:
  *      CALLM, cpBcc, cpDBcc, cpGEN, cpRESTORE, cpSAVE, cpScc, cpTRAPcc
@@ -260,6 +260,7 @@ static void m68020_cpu_initfn(Object *obj)
     m68k_set_feature(env, M68K_FEATURE_MSP);
     m68k_set_feature(env, M68K_FEATURE_UNALIGNED_DATA);
     m68k_set_feature(env, M68K_FEATURE_TRAPCC);
+    m68k_set_feature(env, M68K_FEATURE_LINKL);
 }
 
 /*

@@ -37,12 +37,14 @@ The virt board supports:
 - An RTC
 - The fw_cfg device that allows a guest to obtain data from QEMU
 - A PL061 GPIO controller
-- An optional SMMUv3 IOMMU
+- An optional machine-wide SMMUv3 IOMMU
+- User-creatable SMMUv3 devices (see below for example)
 - hotpluggable DIMMs
 - hotpluggable NVDIMMs
-- An MSI controller (GICv2M or ITS). GICv2M is selected by default along
-  with GICv2. ITS is selected by default with GICv3 (>= virt-2.7). Note
-  that ITS is not modeled in TCG mode.
+- An MSI controller (GICv2m or ITS).
+  - When using GICv3, ITS is selected by default when available on the platform.
+  - If using GICv2, a GICv2m is provided by default instead.
+  - When ITS is not available on a GICv3 platform, a GICv2m is provided by default.
 - 32 virtio-mmio transport devices
 - running guests using the KVM accelerator on aarch64 hardware
 - large amounts of RAM (at least 255GB, and more if using highmem)
@@ -166,9 +168,22 @@ gic-version
     with TCG this is currently ``3`` if ``virtualization`` is ``off`` and
     ``4`` if ``virtualization`` is ``on``, but this may change in future)
 
+msi
+  Specify the MSI and MSI-X controller (GIC) to provide.
+  Valid values are:
+
+  ``auto``
+    Use the best available MSI-X controller option. ITS when supported, GICv2m otherwise.
+  ``gicv2m``
+    GICv2m. Typically used with a GICv2. Also available with a newer GIC.
+  ``its``
+    GICv3 ITS. This is the default option when using a GICv3 or GICv4 with a supported
+    accelerator.
+  ``off``
+    Disable support for MSI/MSI-X interrupts.
+
 its
-  Set ``on``/``off`` to enable/disable ITS instantiation. The default is ``on``
-  for machine types later than ``virt-2.7``.
+  Set ``on``/``off`` to control ITS instantiation. This is a deprecated option, use ``msi`` instead.
 
 iommu
   Set the IOMMU type to create for the guest. Valid values are:
@@ -176,7 +191,7 @@ iommu
   ``none``
     Don't create an IOMMU (the default)
   ``smmuv3``
-    Create an SMMUv3
+    Create a machine-wide SMMUv3.
 
 default-bus-bypass-iommu
   Set ``on``/``off`` to enable/disable `bypass_iommu
@@ -218,6 +233,36 @@ x-oem-id
 x-oem-table-id
   Set string (up to 8 bytes) to override the default value of field OEM Table ID
   in ACPI table header.
+
+SMMU configuration
+""""""""""""""""""
+
+Machine-wide SMMUv3 IOMMU
+  Setting the machine-specific option ``iommu=smmuv3`` causes QEMU to
+  create a single, machine-wide SMMUv3 instance that applies to all
+  devices in the PCIe topology.
+
+  For information about selectively bypassing devices, refer to
+  ``docs/bypass-iommu.txt``.
+
+User-creatable SMMUv3 devices
+  You can use the ``-device arm-smmuv3`` option to create multiple
+  user-defined SMMUv3 devices, each associated with a separate PCIe
+  root complex. This is only permitted if the machine-wide SMMUv3
+  (``iommu=smmuv3``) option is not used. Each ``arm-smmuv3`` device
+  uses the ``primary-bus`` sub-option to specify which PCIe root
+  complex it is associated with.
+
+  This model is useful when you want to mirror a host configuration where
+  each NUMA node typically has its own SMMU, allowing the VM topology to
+  align more closely with the host’s hardware layout.
+
+  Example::
+
+      -device arm-smmuv3,primary-bus=pcie.0,id=smmuv3.0
+      ...
+      -device pxb-pcie,id=pcie.1,numa_node=1
+      -device arm-smmuv3,primary-bus=pcie.1,id=smmuv3.1
 
 Linux guest kernel configuration
 """"""""""""""""""""""""""""""""
